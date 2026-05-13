@@ -1,0 +1,97 @@
+# LLSS Client application configuration
+# Kconfig for apps/hello_eink
+
+menu "LLSS Client"
+
+config LLSS_SERVER_URL
+	string "LLSS server base URL"
+	default "https://eink.tutu.eng.br:9608/api"
+	help
+	  Base URL of the Low Level Screen Service API, without trailing slash.
+
+config LLSS_FIRMWARE_VERSION
+	string "Firmware version reported to LLSS server"
+	default "0.1.0"
+
+config LLSS_AP_SSID_PREFIX
+	string "WiFi AP SSID prefix for provisioning mode"
+	default "LLSS-"
+
+config LLSS_POLL_INTERVAL_MS
+	int "Default poll interval in milliseconds"
+	default 5000
+	range 1000 60000
+
+config LLSS_MIN_POLL_MS
+	int "Minimum poll interval in milliseconds"
+	default 1000
+
+config LLSS_MAX_POLL_MS
+	int "Maximum poll interval in milliseconds"
+	default 60000
+
+config LLSS_DISPLAY_BIT_DEPTH
+	int "Display bit depth reported to server (8 = PNG)"
+	default 8
+	help
+	  Bit depth registered with LLSS. A value >4 causes the server to
+	  return PNG frames instead of raw packed buffers. PNG is decoded
+	  on device via LVGL's lodepng integration.
+
+config LLSS_TLS_TAG
+	int "TLS credential sec_tag for LLSS server CA certificate"
+	default 1
+
+config LLSS_DNS_TIMEOUT_MS
+	int "DNS resolution timeout in milliseconds"
+	default 5000
+
+config LLSS_NTP_SERVER
+	string "NTP server hostname"
+	default "pool.ntp.org"
+
+config LLSS_NTP_SYNC_INTERVAL_S
+	int "NTP sync interval in seconds"
+	default 3600
+
+config LLSS_HTTP_TIMEOUT_MS
+	int "HTTP request timeout in milliseconds"
+	default 15000
+
+config LLSS_FRAME_BUF_SIZE
+	int "Maximum frame buffer size in bytes (PNG)"
+	default 524288
+	help
+	  Maximum size of a PNG frame received from the server.
+	  800x480 8bpp PNG typically compresses to 30-150 KB.
+	  Allocated from SPIRAM.
+
+config LLSS_DEVICE_ID_MAX
+	int "Maximum device_id length (including NUL terminator)"
+	default 65
+
+config LLSS_DEVICE_SECRET_MAX
+	int "Maximum device_secret length (including NUL terminator)"
+	default 65
+
+config LLSS_TOKEN_MAX
+	int "Maximum token length (including NUL terminator)"
+	default 512
+	help
+	  Maximum size for refresh_token and access_token buffers.
+
+config LLSS_MAX_HOSTNAME
+	int "Maximum server hostname length"
+	default 64
+
+config LLSS_MAX_BASE_PATH
+	int "Maximum server base path length"
+	default 64
+
+config LLSS_MAX_URL_LEN
+	int "Maximum constructed URL length"
+	default 256
+
+endmenu
+
+source "Kconfig.zephyr"

@@ -1,0 +1,14 @@
+config WIFI_PROV
+config WIFI_PROV
+	bool "WiFi provisioning module"
+	select WIFI
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_L2_WIFI_MGMT
+	select NET_SOCKETS
+	select NET_DHCPV4_SERVER
+	select FLASH
+	select FLASH_MAP
+	select NVS
+	help
+	  Enables the WiFi provisioning module with captive portal.

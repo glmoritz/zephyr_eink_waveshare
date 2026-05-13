@@ -1,0 +1,6 @@
+board:
+  name: eink_llss_esp32
+  full_name: E-Ink LLSS ESP32 Board
+  vendor: custom
+  socs:
+  - name: esp32s3

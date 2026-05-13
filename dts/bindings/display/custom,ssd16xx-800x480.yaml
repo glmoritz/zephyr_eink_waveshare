@@ -1,0 +1,15 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: Custom SSD16xx-style 800x480 EPD controller using the init sequence
+  validated in the existing ESP-IDF project.
+
+compatible: "custom,ssd16xx-800x480"
+
+include: [mipi-dbi-spi-device.yaml, display-controller.yaml]
+
+properties:
+  busy-gpios:
+    type: phandle-array
+    required: true
+    description: Busy pin. This panel uses active-high busy signalling.

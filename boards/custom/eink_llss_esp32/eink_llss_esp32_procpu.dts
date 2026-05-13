@@ -1,0 +1,159 @@
+/dts-v1/;
+
+#include <espressif/esp32s3/esp32s3_wroom_n16r8.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <espressif/partitions_0x0_amp.dtsi>
+#include "eink_llss_esp32-pinctrl.dtsi"
+
+/ {
+	model = "E-Ink LLSS ESP32 PROCPU";
+	compatible = "custom,eink-llss-esp32", "espressif,esp32s3";
+
+	aliases {
+		i2c-0 = &i2c0;
+		spi-0 = &spi2;
+		uart-0 = &uart0;
+		sw0 = &button0;
+		watchdog0 = &wdt0;
+	};
+
+	chosen {
+		zephyr,sram = &sram1;
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,display = &epd0;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		button0: button_0 {
+			gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BOOT Button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	mipi_dbi_epd: mipi_dbi_epd {
+		compatible = "zephyr,mipi-dbi-spi";
+		status = "okay";
+		spi-dev = <&spi2>;
+		dc-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 46 GPIO_ACTIVE_LOW>;
+		write-only;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		epd0: epd@0 {
+			compatible = "custom,ssd16xx-800x480";
+			mipi-max-frequency = <4000000>;
+			reg = <0>;
+			status = "okay";
+			width = <800>;
+			height = <480>;
+			busy-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-names = "default";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+
+	axp2101: axp2101@34 {
+		compatible = "x-powers,axp2101";
+		reg = <0x34>;
+		status = "okay";
+
+		regulators {
+			compatible = "x-powers,axp2101-regulator";
+			status = "okay";
+
+			dcdc1_reg: dcdc1 {
+				regulator-boot-on;
+				status = "okay";
+			};
+
+			aldo1_reg: aldo1 {
+				regulator-boot-on;
+				status = "okay";
+			};
+
+			aldo2_reg: aldo2 {
+				regulator-boot-on;
+				status = "okay";
+			};
+
+			aldo3_reg: aldo3 {
+				regulator-boot-on;
+				status = "okay";
+			};
+		};
+
+		charger: charger {
+			compatible = "x-powers,axp2101-charger";
+			constant-charge-current-max-microamp = <200000>;
+			constant-charge-voltage-max-microvolt = <4200000>;
+			status = "okay";
+		};
+
+		axp2101_led: led {
+			compatible = "x-powers,axp2101-led";
+			x-powers,mode = "type-a";
+			status = "okay";
+		};
+
+		fuel_gauge: fuel_gauge {
+			compatible = "x-powers,axp2101-fuel-gauge";
+			status = "okay";
+		};
+	};
+};
+
+&spi2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	pinctrl-0 = <&spi2_epd_pins>;
+	pinctrl-names = "default";
+};
+
+&wdt0 {
+	status = "okay";
+};
+
+&trng0 {
+	status = "okay";
+};
+
+/* N16R8: 16MB flash + 8MB OPI PSRAM */
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;
+};
+
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};

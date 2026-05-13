@@ -1,0 +1,6 @@
+build/
+**/build/
+compile_commands.json
+zephyr.bin
+zephyr.elf
+.vscode/

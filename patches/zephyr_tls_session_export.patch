@@ -1,0 +1,373 @@
+PATCH: zephyr_tls_session_export — cross-sleep TLS session persistence
+=======================================================================
+
+Written against: Zephyr 4.3.0  (git tag v4.3.0, commit prefix 7bad851 / 2ccca60)
+Target platform: ESP32-S3 N16R8 on Zephyr RTOS with mbedTLS builtin
+Application:     /workspace/projects/hello_eink  (LLSS e-ink client, deep-sleep loop)
+
+SUMMARY
+-------
+Zephyr's TLS socket implementation keeps `struct tls_context` private to
+`sockets_tls.c`.  There is no public API to extract or inject a serialised
+mbedTLS session, so a resumed handshake after deep sleep (where DRAM is lost
+but RTC slow RAM survives) is impossible without this patch.
+
+The patch adds two new TLS socket options:
+
+  TLS_SESSION_EXPORT  (21)  — getsockopt after a successful connect.
+      Serialises the negotiated session via `mbedtls_ssl_session_save()` into
+      a caller-supplied buffer.  The application stores this buffer in RTC
+      slow RAM (section `.rtc_noinit`, survives deep sleep) tagged with a
+      magic sentinel so it can be distinguished from uninitialised RAM.
+
+  TLS_SESSION_IMPORT  (22)  — setsockopt before the next connect.
+      Copies the raw bytes into a heap buffer owned by the TLS context.
+      `tls_session_restore()` uses these bytes as a fallback when the
+      in-memory client-session cache (which is cleared on every reboot) has
+      no entry for the peer.
+
+The option numbers 21 and 22 are chosen to follow the highest existing
+option in socket.h at the time of writing (TLS_CERT_VERIFY_CALLBACK = 20).
+If upstream Zephyr adds new options that collide, renumber and update
+TLS_SESSION_EXPORT / TLS_SESSION_IMPORT in both socket.h and llss_client.c.
+
+DESIGN CONSTRAINTS (read before porting)
+-----------------------------------------
+1. `struct tls_context` is defined entirely inside sockets_tls.c and is never
+   exposed in a header.  The two new fields `ext_session` (uint8_t *) and
+   `ext_session_len` (size_t) are appended at the END of the anonymous
+   `options` sub-struct so that all existing field offsets are preserved.
+   If the upstream struct gains new option fields after the patch is applied
+   the patch hunk for the struct may conflict — resolve by keeping
+   `ext_session` / `ext_session_len` as the last two members of `options`.
+
+2. The `options` sub-struct closing brace `} options;` is the most fragile
+   part of this patch.  Any upstream addition of a new option field will
+   appear immediately before that brace and will cause a conflict.  Resolution:
+   keep the two ext_session fields as the last members, move the hunk context
+   lines to wherever the new upstream fields were inserted.
+
+3. `tls_session_restore()` is called inside `tls_perform_handshake()` just
+   before `mbedtls_ssl_handshake()`.  The fallback branch added by this patch
+   executes only when `tls_session_get()` returns non-zero (cache miss).
+   If the Zephyr maintainers ever restructure that call site, ensure the
+   fallback is still invoked at the same point in the handshake flow.
+
+4. The session serialisation format is version-specific mbedTLS wire encoding.
+   If the mbedTLS bundled version changes (check MBEDTLS_VERSION_STRING in
+   /opt/toolchains/zephyr/modules/crypto/mbedtls/include/mbedtls/version.h)
+   the application must invalidate any stored RTC session (e.g. change
+   LLSS_TLS_SESSION_MAGIC in llss_client.c) so stale bytes from a previous
+   mbedTLS version are never fed to `mbedtls_ssl_session_load()`.
+
+5. `mbedtls_ssl_get_session()` copies the session; the copy is freed in
+   `tls_opt_session_export_get()` with `mbedtls_ssl_session_free()`.  The
+   original session inside `mbedtls_ssl_context` is unaffected.
+
+6. The heap buffer in `ctx->options.ext_session` is allocated with
+   `mbedtls_calloc` and freed unconditionally in `tls_release()`.  If
+   `tls_release` is ever refactored ensure this free is not orphaned.
+
+BEFORE PORTING — CHECK IF THE FEATURE IS NOW UPSTREAM
+--------------------------------------------------------
+Before spending any effort adapting this patch to a new Zephyr version, verify
+that the functionality has not already been added by the Zephyr maintainers.
+Run the checks below against the new Zephyr tree.  If ALL pass, discard this
+patch entirely and update llss_client.c to use the upstream API instead.
+
+1. Socket option defines already present?
+     grep -n "TLS_SESSION_EXPORT\|TLS_SESSION_IMPORT" \
+         include/zephyr/net/socket.h
+   Expected when upstream: two matching #define lines.
+   If found: note the option numbers, ensure llss_client.c uses them.
+
+2. getsockopt/setsockopt dispatch cases wired?
+     grep -n "TLS_SESSION_EXPORT\|TLS_SESSION_IMPORT" \
+         subsys/net/lib/sockets/sockets_tls.c
+   Expected when upstream: at least one match in ztls_getsockopt_ctx and one
+   in ztls_setsockopt_ctx.
+
+3. Session serialisation API available to the socket layer?
+     grep -n "mbedtls_ssl_session_save\|mbedtls_ssl_session_load" \
+         subsys/net/lib/sockets/sockets_tls.c
+   Expected when upstream: calls present (they may be wrapped differently).
+
+4. Check the Zephyr changelog / git log for related commits:
+     git log --oneline --all --grep="session.*export\|session.*import\|TLS_SESSION" \
+         -- subsys/net/lib/sockets/sockets_tls.c include/zephyr/net/socket.h
+   Any hit that mentions session export/import/serialise is a strong signal
+   the feature landed upstream.
+
+5. Check upstream issue / PR tracker:
+   Search https://github.com/zephyrproject-rtos/zephyr/issues for
+   "TLS session export" or "TLS session resume RTC".  A merged PR means
+   the feature is in the tree; use the upstream API number instead of 21/22.
+
+If NONE of the above find anything, the feature is still absent upstream and
+this patch must be ported.  Proceed to the hunk-by-hunk guide below.
+
+HUNK-BY-HUNK GUIDE FOR PORTING
+--------------------------------
+
+Hunk 1 — include/zephyr/net/socket.h  (@@ -262 @@)
+  Context line: `#define TLS_CERT_VERIFY_CALLBACK 20`
+  Action: two new #define lines inserted after it.
+  Risk: LOW.  Only conflict if upstream adds a new option with value 21 or 22.
+  Fix: renumber to the next free values and update llss_client.c.
+
+Hunk 2 — sockets_tls.c  (@@ -211 @@)  — tls_context.options struct
+  Context lines: the `cert_verify` member inside the options struct.
+  Action: two new fields appended before `} options;`.
+  Risk: MEDIUM.  Any new upstream option field added here will conflict.
+  Fix: keep ext_session / ext_session_len as the last two members before
+  `} options;` regardless of where upstream adds its new field.
+
+Hunk 3 — sockets_tls.c  (@@ -546 @@)  — tls_release()
+  Context lines: `mbedtls_pk_free` ... `tls->is_used = false`.
+  Action: free ext_session before marking context unused.
+  Risk: LOW.  Only conflicts if tls_release() body is restructured.
+
+Hunk 4 — sockets_tls.c  (@@ -575 @@)  — new functions after peer_addr_cmp()
+  Context line: closing `}` of peer_addr_cmp, then `tls_session_save`.
+  Action: inserts tls_opt_session_export_get() and tls_opt_session_import_set().
+  Risk: LOW.  Free-standing new functions; no dependency on surrounding code
+  except the mbedtls_ssl_session_save/load/get/free API.
+
+Hunk 5 — sockets_tls.c  (@@ -713 @@)  — tls_session_restore() fallback
+  Context lines: `tls_session_get()` failure branch ("Session not found").
+  Action: replaces the simple "goto exit" with an ext_session fallback.
+  Risk: MEDIUM.  If tls_session_restore() is refactored (e.g. the get/set
+  split is reorganised) re-check that the fallback still runs before
+  `mbedtls_ssl_set_session()` and after `tls_session_get()` fails.
+
+Hunk 6 — sockets_tls.c  (@@ -3712 @@)  — ztls_getsockopt_ctx dispatch
+  Context line: `case TLS_SESSION_CACHE:` block just before `TLS_CERT_VERIFY_RESULT`.
+  Action: new `case TLS_SESSION_EXPORT:` inserted.
+  Risk: LOW.  Only conflicts if the surrounding switch cases are reordered.
+
+Hunk 7 — sockets_tls.c  (@@ -3838 @@)  — ztls_setsockopt_ctx dispatch
+  Context line: `case TLS_SESSION_CACHE_PURGE:` block just before `TLS_CERT_VERIFY_CALLBACK`.
+  Action: new `case TLS_SESSION_IMPORT:` inserted.
+  Risk: LOW.  Same as Hunk 6.
+
+RELATED FILES (not part of this patch, but must be consistent with it)
+------------------------------------------------------------------------
+  /workspace/projects/hello_eink/src/llss_client.c
+      - Uses TLS_SESSION_EXPORT / TLS_SESSION_IMPORT socket options.
+      - Declares rtc_tls_session_buf, rtc_tls_session_len, rtc_tls_session_magic
+        with __attribute__((section(".rtc_noinit"))) so they survive deep sleep.
+      - LLSS_TLS_SESSION_MAGIC sentinel: change if mbedTLS version changes.
+      - LLSS_TLS_SESSION_BUF_SIZE (512 B): increase if mbedtls_ssl_session_save
+        returns -ENOBUFS (TLS 1.3 tickets can be larger than TLS 1.2 sessions).
+  /workspace/projects/hello_eink/prj.conf
+      - CONFIG_MBEDTLS_SSL_SESSION_TICKETS=y  (required for TLS 1.3 resumption)
+      - CONFIG_NET_SOCKETS_TLS_MAX_CLIENT_SESSION_COUNT=1  (in-memory cache)
+      - CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y  (enables ticket-based resumption)
+
+---
+
+diff --git a/include/zephyr/net/socket.h b/include/zephyr/net/socket.h
+index 7bad851f238..b65df20d398 100644
+--- a/include/zephyr/net/socket.h
++++ b/include/zephyr/net/socket.h
+@@ -262,6 +262,28 @@ extern "C" {
+  */
+ #define TLS_CERT_VERIFY_CALLBACK 20
+ 
++/** @brief Export the serialized TLS session after a successful handshake.
++ *
++ *  getsockopt() with this option fills the caller's buffer with the raw
++ *  mbedTLS session bytes (same format as mbedtls_ssl_session_save()).
++ *  The returned @p optlen is the actual number of bytes written.
++ *  Returns -ENOBUFS if the buffer is too small (optlen is updated to the
++ *  required size) or -ENOENT if no session is available yet.
++ *  Use after zsock_connect() succeeds to snapshot the session for storage
++ *  in RTC RAM / NVS to survive deep sleep (Phase B.2).
++ */
++#define TLS_SESSION_EXPORT 21
++
++/** @brief Import a previously exported TLS session before connecting.
++ *
++ *  setsockopt() with this option loads the raw mbedTLS session bytes
++ *  (same format as mbedtls_ssl_session_load()) into the TLS context so
++ *  that the next zsock_connect() can attempt an abbreviated handshake.
++ *  Must be called after @ref TLS_SESSION_CACHE is enabled and before
++ *  zsock_connect().  Pass optval=NULL / optlen=0 to clear.
++ */
++#define TLS_SESSION_IMPORT 22
++
+ /* Valid values for @ref TLS_PEER_VERIFY option */
+ #define TLS_PEER_VERIFY_NONE 0     /**< Peer verification disabled. */
+ #define TLS_PEER_VERIFY_OPTIONAL 1 /**< Peer verification optional. */
+diff --git a/subsys/net/lib/sockets/sockets_tls.c b/subsys/net/lib/sockets/sockets_tls.c
+index 2ccca60a34d..6e35826e475 100644
+--- a/subsys/net/lib/sockets/sockets_tls.c
++++ b/subsys/net/lib/sockets/sockets_tls.c
+@@ -211,7 +211,15 @@ __net_socket struct tls_context {
+ #if defined(CONFIG_NET_SOCKETS_TLS_CERT_VERIFY_CALLBACK)
+ 		struct tls_cert_verify_cb cert_verify;
+ #endif /* CONFIG_NET_SOCKETS_TLS_CERT_VERIFY_CALLBACK */
+-	} options;
++
++                /** Externally supplied session bytes for cross-sleep
++                 *  resumption (TLS_SESSION_IMPORT / Phase B.2).  Loaded
++                 *  into the ssl context by tls_session_restore() when the
++                 *  in-memory client_cache has no entry for the peer.
++                 */
++                uint8_t *ext_session;
++                size_t ext_session_len;
++        } options;
+ 
+ #if defined(CONFIG_NET_SOCKETS_ENABLE_DTLS)
+ 	/** Context information for DTLS timing. */
+@@ -546,13 +554,19 @@ static int tls_release(struct tls_context *tls)
+ 	mbedtls_pk_free(&tls->priv_key);
+ #endif
+ 
+-	tls->is_used = false;
++        if (tls->options.ext_session != NULL) {
++                mbedtls_free(tls->options.ext_session);
++                tls->options.ext_session = NULL;
++                tls->options.ext_session_len = 0;
++        }
+ 
+-	return 0;
++        tls->is_used = false;
++
++        return 0;
+ }
+ 
+ static bool peer_addr_cmp(const struct sockaddr *addr,
+-			  const struct sockaddr *peer_addr)
++                          const struct sockaddr *peer_addr)
+ {
+ 	if (addr->sa_family != peer_addr->sa_family) {
+ 		return false;
+@@ -575,6 +589,77 @@ static bool peer_addr_cmp(const struct sockaddr *addr,
+ 	return false;
+ }
+ 
++/* Phase B.2: export the active TLS session into a caller-supplied buffer.
++ * Called from ztls_getsockopt_ctx via TLS_SESSION_EXPORT.
++ * The buffer format is mbedtls_ssl_session_save() wire encoding, suitable
++ * for storing in RTC RAM and later restoring via TLS_SESSION_IMPORT. */
++static int tls_opt_session_export_get(struct tls_context *ctx,
++				      void *optval, socklen_t *optlen)
++{
++	mbedtls_ssl_session session;
++	size_t session_len;
++	int ret;
++
++	mbedtls_ssl_session_init(&session);
++
++	ret = mbedtls_ssl_get_session(&ctx->ssl, &session);
++	if (ret != 0) {
++		mbedtls_ssl_session_free(&session);
++		return -ENOENT;
++	}
++
++	/* Probe for required size */
++	(void)mbedtls_ssl_session_save(&session, NULL, 0, &session_len);
++
++	if ((size_t)*optlen < session_len) {
++		mbedtls_ssl_session_free(&session);
++		*optlen = (socklen_t)session_len;
++		return -ENOBUFS;
++	}
++
++	ret = mbedtls_ssl_session_save(&session, optval, *optlen, &session_len);
++	mbedtls_ssl_session_free(&session);
++
++	if (ret != 0) {
++		return -EIO;
++	}
++
++	*optlen = (socklen_t)session_len;
++	return 0;
++}
++
++/* Phase B.2: store externally supplied session bytes in the TLS context so
++ * that tls_session_restore() can attempt an abbreviated handshake even after
++ * a reboot (RTC RAM path).  The bytes are a copy owned by this context and
++ * freed in tls_release(). */
++static int tls_opt_session_import_set(struct tls_context *ctx,
++				      const void *optval, socklen_t optlen)
++{
++	if (optval == NULL || optlen == 0) {
++		if (ctx->options.ext_session != NULL) {
++			mbedtls_free(ctx->options.ext_session);
++			ctx->options.ext_session = NULL;
++			ctx->options.ext_session_len = 0;
++		}
++		return 0;
++	}
++
++	uint8_t *buf = mbedtls_calloc(1, optlen);
++
++	if (buf == NULL) {
++		return -ENOMEM;
++	}
++
++	if (ctx->options.ext_session != NULL) {
++		mbedtls_free(ctx->options.ext_session);
++	}
++
++	memcpy(buf, optval, optlen);
++	ctx->options.ext_session = buf;
++	ctx->options.ext_session_len = optlen;
++	return 0;
++}
++
+ static int tls_session_save(const struct sockaddr *peer_addr,
+ 			    mbedtls_ssl_session *session)
+ {
+@@ -713,8 +798,25 @@ static void tls_session_restore(struct tls_context *context,
+ 
+ 	ret = tls_session_get(&peer_addr, &session);
+ 	if (ret < 0) {
+-		NET_DBG("Session not found for %p", context);
+-		goto exit;
++		/* In-memory cache miss — fall back to externally supplied
++		 * session bytes (TLS_SESSION_IMPORT, e.g. from RTC RAM). */
++		if (context->options.ext_session != NULL &&
++		    context->options.ext_session_len > 0) {
++			ret = mbedtls_ssl_session_load(
++				&session,
++				context->options.ext_session,
++				context->options.ext_session_len);
++			if (ret != 0) {
++				NET_DBG("Ext session load failed %p: -0x%x",
++					context, -ret);
++				goto exit;
++			}
++			NET_DBG("TLS: restoring session from ext buffer (%p)",
++				context);
++		} else {
++			NET_DBG("Session not found for %p", context);
++			goto exit;
++		}
+ 	}
+ 
+ 	ret = mbedtls_ssl_set_session(&context->ssl, &session);
+@@ -3712,6 +3814,10 @@ int ztls_getsockopt_ctx(struct tls_context *ctx, int level, int optname,
+ 		err = tls_opt_session_cache_get(ctx, optval, optlen);
+ 		break;
+ 
++	case TLS_SESSION_EXPORT:
++		err = tls_opt_session_export_get(ctx, optval, optlen);
++		break;
++
+ 	case TLS_CERT_VERIFY_RESULT:
+ 		err = tls_opt_cert_verify_result_get(ctx, optval, optlen);
+ 		break;
+@@ -3838,6 +3944,10 @@ int ztls_setsockopt_ctx(struct tls_context *ctx, int level, int optname,
+ 		err = tls_opt_session_cache_purge_set(ctx, optval, optlen);
+ 		break;
+ 
++	case TLS_SESSION_IMPORT:
++		err = tls_opt_session_import_set(ctx, optval, optlen);
++		break;
++
+ 	case TLS_CERT_VERIFY_CALLBACK:
+ 		err = tls_opt_cert_verify_callback_set(ctx, optval, optlen);
+ 		break;

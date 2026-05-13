@@ -1,0 +1,110 @@
+/ {
+	chosen {
+		zephyr,rtc = &rtc0;
+	};
+
+	gpio_keys: gpio_keys {
+		compatible = "gpio-keys";
+
+		/* Direct GPIO buttons */
+		enter_btn: enter_btn {
+			gpios = <&gpio0 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "ENTER";
+			zephyr,code = <INPUT_KEY_ENTER>;
+		};
+
+		esc_btn: esc_btn {
+			gpios = <&gpio0 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "ESC";
+			zephyr,code = <INPUT_KEY_ESC>;
+		};
+
+		hl_left_btn: hl_left_btn {
+			gpios = <&gpio0 7 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "HL_LEFT";
+			zephyr,code = <INPUT_KEY_LEFT>;
+		};
+
+		hl_right_btn: hl_right_btn {
+			gpios = <&gpio0 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "HL_RIGHT";
+			zephyr,code = <INPUT_KEY_RIGHT>;
+		};
+
+		/* MCP23017 buttons — 8 bottom row keys */
+		btn1: btn1 {
+			gpios = <&mcp23017 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN1";
+			zephyr,code = <INPUT_KEY_1>;
+		};
+
+		btn2: btn2 {
+			gpios = <&mcp23017 1 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN2";
+			zephyr,code = <INPUT_KEY_2>;
+		};
+
+		btn3: btn3 {
+			gpios = <&mcp23017 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN3";
+			zephyr,code = <INPUT_KEY_3>;
+		};
+
+		btn4: btn4 {
+			gpios = <&mcp23017 3 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN4";
+			zephyr,code = <INPUT_KEY_4>;
+		};
+
+		btn5: btn5 {
+			gpios = <&mcp23017 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN5";
+			zephyr,code = <INPUT_KEY_5>;
+		};
+
+		btn6: btn6 {
+			gpios = <&mcp23017 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN6";
+			zephyr,code = <INPUT_KEY_6>;
+		};
+
+		btn7: btn7 {
+			gpios = <&mcp23017 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN7";
+			zephyr,code = <INPUT_KEY_7>;
+		};
+
+		btn8: btn8 {
+			gpios = <&mcp23017 7 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "BTN8";
+			zephyr,code = <INPUT_KEY_8>;
+		};
+	};
+};
+
+&i2c0 {
+	mcp23017: mcp23017@20 {
+		compatible = "microchip,mcp23017";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <16>;
+		int-gpios = <&gpio0 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+
+	/* PCF85063ATL RTC — shared I2C bus with AXP2101
+	 * I2C address: 0x51 (fixed)
+	 * INT pin: GPIO45 = gpio1 pin 13 (open-drain, active-low)
+	 */
+	rtc0: pcf85063@51 {
+		compatible = "nxp,pcf85063a";
+		reg = <0x51>;
+		int1-gpios = <&gpio1 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+};
+
+&wifi {
+	status = "okay";
+};
