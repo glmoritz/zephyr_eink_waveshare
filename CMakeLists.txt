@@ -8,6 +8,8 @@ project(hello_eink)
 
 target_sources(app PRIVATE
     src/main.c
+    src/display_thread.c
+    src/llss_thread.c
     src/display_ssd16xx_800x480.c
     src/llss_storage.c
     src/llss_client.c

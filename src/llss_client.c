@@ -366,29 +366,6 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 	zsock_setsockopt(sock, SOL_TLS, TLS_SESSION_CACHE,
 			 &session_cache_opt, sizeof(session_cache_opt));
 
-	/* Phase B.2: if we have a session ticket in RTC slow RAM (survived
-	 * deep sleep), import it so the next handshake can be abbreviated
-	 * (~150 ms) instead of a full ECDHE exchange (~3 s). */
-	if (rtc_tls_session_magic == LLSS_TLS_SESSION_MAGIC &&
-	    rtc_tls_session_len > 0 &&
-	    rtc_tls_session_len <= LLSS_TLS_SESSION_BUF_SIZE) {
-		if (zsock_setsockopt(sock, SOL_TLS, TLS_SESSION_IMPORT,
-				     rtc_tls_session_buf,
-				     (socklen_t)rtc_tls_session_len) == 0) {
-			LOG_INF("LLSS RTC: importing %u-byte session for "
-				"abbreviated handshake",
-				(unsigned)rtc_tls_session_len);
-		} else {
-			LOG_WRN("LLSS RTC: session import failed (errno=%d) — "
-				"will do full handshake", errno);
-			rtc_tls_session_magic = 0;
-		}
-	} else {
-		LOG_DBG("LLSS RTC: no valid session ticket (cold start)");
-		rtc_tls_session_magic = 0;
-		rtc_tls_session_len   = 0;
-	}
-
 	if (llss_ca_cert_len == 0) {
 		int peer_verify = TLS_PEER_VERIFY_NONE;
 
@@ -404,24 +381,6 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 	if (rc == 0) {
 		cache_server_addr((struct sockaddr *)&target, addrlen);
 		log_tls_socket_state(sock, "connect ok");
-
-		/* Phase B.2: export the negotiated session to RTC slow RAM
-		 * so the next wake cycle can attempt an abbreviated handshake. */
-		socklen_t export_len = (socklen_t)LLSS_TLS_SESSION_BUF_SIZE;
-
-		if (zsock_getsockopt(sock, SOL_TLS, TLS_SESSION_EXPORT,
-				     rtc_tls_session_buf,
-				     &export_len) == 0) {
-			rtc_tls_session_len   = export_len;
-			rtc_tls_session_magic = LLSS_TLS_SESSION_MAGIC;
-			LOG_INF("LLSS RTC: session exported (%u bytes)",
-				(unsigned)export_len);
-		} else {
-			LOG_WRN("LLSS RTC: session export failed (errno=%d)",
-				errno);
-			rtc_tls_session_magic = 0;
-			rtc_tls_session_len   = 0;
-		}
 
 		LOG_INF("LLSS connect ok: %s in %lld ms",
 			addr_buf, (long long)(k_uptime_get() - start_ms));
