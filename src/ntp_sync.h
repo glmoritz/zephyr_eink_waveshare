@@ -1,6 +1,8 @@
 #ifndef NTP_SYNC_H_
 #define NTP_SYNC_H_
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -12,6 +14,13 @@ extern "C" {
  * Does nothing if the RTC has never been set (year < 2024).
  */
 void ntp_sync_restore_from_rtc(void);
+
+/**
+ * @brief Report whether CLOCK_REALTIME looks valid for TLS cert checks.
+ *
+ * Returns true when the current realtime clock is at or after 2024-01-01 UTC.
+ */
+bool ntp_sync_time_is_valid(void);
 
 /**
  * @brief Perform a single NTP sync, update the RTC and system clock.

@@ -123,6 +123,37 @@ static K_SEM_DEFINE(sem_wifi_up, 0, 1);
 static atomic_t session_reset_requested = ATOMIC_INIT(0);
 static bool session_open;
 
+static void wait_for_valid_time(void)
+{
+	int rc;
+
+	if (ntp_sync_time_is_valid()) {
+		LOG_INF("CLOCK_REALTIME already valid; skipping initial NTP wait");
+		return;
+	}
+
+	ui_set_status("Syncing time...", CONFIG_LLSS_NTP_SERVER);
+
+	while (!ntp_sync_time_is_valid()) {
+		if (app_state == STATE_WIFI_CONNECTING) {
+			k_sem_take(&sem_wifi_up, K_FOREVER);
+			if (ntp_sync_time_is_valid()) {
+				return;
+			}
+			ui_set_status("Syncing time...", CONFIG_LLSS_NTP_SERVER);
+		}
+
+		rc = ntp_sync_once();
+		if (ntp_sync_time_is_valid()) {
+			return;
+		}
+
+		LOG_WRN("Clock still invalid after NTP attempt (%d) — retry in 5s", rc);
+		ui_set_status("Waiting for time sync", "Retrying in 5s...");
+		k_msleep(5000);
+	}
+}
+
 void llss_on_wifi(enum wifi_prov_state state, const char *info)
 {
 	char msg[80];
@@ -520,6 +551,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	LOG_INF("Hardware ID: %s", hardware_id);
 
 	ntp_sync_restore_from_rtc();
+	wait_for_valid_time();
 	ntp_sync_start();
 
 	int rc = llss_client_init();

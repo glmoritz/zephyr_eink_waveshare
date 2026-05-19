@@ -345,7 +345,9 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 		net_addr_ntop(family, raw_addr, addr_buf, sizeof(addr_buf));
 	}
 
-	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_3);
+	/* A/B: pinned back to TLS 1.2 to isolate whether traefik's 400 on this
+	 * endpoint is specific to Zephyr/mbedTLS's TLS 1.3 ClientHello shape. */
+	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_2);
 	if (sock < 0) {
 		LOG_DBG("socket(af=%d): %d", family, errno);
 		return -errno;
@@ -627,6 +629,14 @@ static int do_request(enum http_method method, const char *path,
 		/* Shared session socket is broken — invalidate it so the next
 		 * call in this job will fall back to opening a fresh one. */
 		LOG_WRN("LLSS session socket error (rc=%d) — invalidating", rc);
+		zsock_close(session_sock);
+		session_sock = -1;
+	} else if (rc >= 400) {
+		/* Server returned an error status — it typically sends a
+		 * TLS close_notify on errors.  Invalidate now so the next
+		 * call opens a fresh connection rather than hitting a dead
+		 * socket. */
+		LOG_DBG("LLSS session: HTTP %d — closing (server likely sent close_notify)", rc);
 		zsock_close(session_sock);
 		session_sock = -1;
 	}
@@ -955,7 +965,7 @@ int llss_refresh_access_token(const char *refresh_token,
 		return http_status;
 	}
 
-	if (http_status == 401 || http_status == 403) {
+	if (http_status == 400 || http_status == 401 || http_status == 403) {
 		return -EACCES;
 	}
 

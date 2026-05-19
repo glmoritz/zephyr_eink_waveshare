@@ -1,0 +1,115 @@
+PATCH: zephyr_mbedtls_session_tickets_ungate — make session tickets available under TLS 1.2
+============================================================================================
+
+Written against: Zephyr 4.5.0-dev  (commit fbfc5f19636d07f214b3f573fa9b673a58e7e932)
+Target platform: any   (this is a pure Kconfig fix — no per-arch impact)
+Application:     /workspace/projects/hello_eink  (LLSS e-ink client, TLS 1.2 pinned)
+
+SUMMARY
+-------
+In `modules/mbedtls/Kconfig.mbedtls` at the pinned commit, the symbol
+`MBEDTLS_SSL_SESSION_TICKETS` is defined inside an `if MBEDTLS_SSL_PROTO_TLS1_3
+... endif` block:
+
+    if MBEDTLS_SSL_PROTO_TLS1_3
+
+    config MBEDTLS_SSL_SESSION_TICKETS
+        bool "Support for RFC 5077 session tickets in TLS 1.3"
+
+    config MBEDTLS_SSL_EARLY_DATA
+        bool "TLS 1.3 early data (0-RTT) support"
+        depends on MBEDTLS_SSL_SESSION_TICKETS
+        ...
+
+    config MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE
+        ...
+
+    endif # MBEDTLS_SSL_PROTO_TLS1_3
+
+Two things are wrong about this:
+
+  1. **RFC 5077 is the TLS 1.2 session-ticket RFC.**  The prompt string even
+     says "RFC 5077 session tickets in TLS 1.3", but RFC 5077 was published
+     in 2008 for TLS 1.2.  TLS 1.3 tickets are RFC 8446 §4.6.1.  Upstream
+     conflated the two.
+
+  2. **The if-guard makes the symbol invisible when TLS 1.2 is the only
+     enabled protocol.**  Any `CONFIG_MBEDTLS_SSL_SESSION_TICKETS=y` in
+     prj.conf is then silently dropped (no warning) because Kconfig hides
+     unsettable symbols.  Without the macro, the mbedTLS client neither
+     advertises the session-ticket extension nor processes incoming
+     NewSessionTicket messages — session resumption falls back to the
+     legacy session-ID mechanism, which most modern multi-frontend servers
+     (Traefik, sharded nginx, anything fronting Let's Encrypt) do not
+     honour.  The Zephyr `NET_SOCKETS_TLS_SESSION_CACHE_PERSISTENT` layer
+     still serialises whatever session struct exists, but on reconnect the
+     client offers only a session ID, so the persisted state is useless
+     against servers that require tickets.
+
+WHY WE NEED THIS LOCALLY
+------------------------
+`hello_eink` pins to TLS 1.2 (see the "TLS 1.3 KILL SWITCH" block in
+`prj.conf`) because TLS 1.3's NewSessionTicket is sent *after* the handshake
+completes and current Zephyr does not catch it for the persistent cache —
+breaking cross-boot resume.  Under TLS 1.2, the NewSessionTicket rides
+inside the handshake itself and the persistent cache picks it up correctly,
+*provided* `MBEDTLS_SSL_SESSION_TICKETS` is actually defined in the build.
+This patch makes that possible.
+
+WHAT THE PATCH DOES
+-------------------
+Moves `MBEDTLS_SSL_SESSION_TICKETS` out of `if MBEDTLS_SSL_PROTO_TLS1_3`,
+gives it an explicit `depends on MBEDTLS_SSL_PROTO_TLS1_2 ||
+MBEDTLS_SSL_PROTO_TLS1_3`, and updates the prompt/help text.  Leaves
+`MBEDTLS_SSL_EARLY_DATA` and `MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE`
+inside the if-block — both genuinely are TLS 1.3 only.  EARLY_DATA's
+`depends on MBEDTLS_SSL_SESSION_TICKETS` continues to work across the
+moved scope.
+
+PORTING / UPSTREAM NOTES
+------------------------
+Right fix is upstream.  If Zephyr later moves SSL_SESSION_TICKETS out of
+the TLS 1.3 if-block (or fully rewrites this section), this patch will fail
+to apply — drop it and remove `CONFIG_MBEDTLS_SSL_SESSION_TICKETS=y` from
+prj.conf only if the upstream symbol is still visible under 1.2.
+
+The patch is reversible: `apply_patches` in `workspace/scripts/zephyr-project.sh`
+detects already-applied state via `git apply --check --reverse` and skips,
+so re-running `zephyr-project.sh build` is idempotent.
+
+IMPACT IF DROPPED
+-----------------
+Build still succeeds.  TLS 1.2 handshakes still work.  But session
+resumption falls back to session-ID only — first connect per boot is a
+full ~3 s handshake, cross-boot persistence is effectively a no-op against
+ticket-only servers.
+
+---
+
+--- a/modules/mbedtls/Kconfig.mbedtls
++++ b/modules/mbedtls/Kconfig.mbedtls
+@@ -59,10 +59,22 @@
+ 	select PSA_WANT_ALG_HKDF_EXTRACT
+ 	select PSA_WANT_ALG_HKDF_EXPAND
+ 
++# --- hello_eink patch: SSL_SESSION_TICKETS visible under TLS 1.2 too ----------
++# Upstream (commit fbfc5f19636d) places this symbol inside `if TLS1_3` even
++# though RFC 5077 session tickets are fundamentally a TLS 1.2 mechanism.
++# Ungate it so 1.2-only builds can actually request and persist tickets.
++# See workspace/projects/hello_eink/patches/zephyr_mbedtls_session_tickets_ungate.patch
++config MBEDTLS_SSL_SESSION_TICKETS
++	bool "Support for RFC 5077 (TLS 1.2) / RFC 8446 (TLS 1.3) session tickets"
++	depends on MBEDTLS_SSL_PROTO_TLS1_2 || MBEDTLS_SSL_PROTO_TLS1_3
++	help
++	  Enable client/server handling of session-ticket-based resumption.
++	  TLS 1.2: NewSessionTicket arrives inside the handshake (RFC 5077).
++	  TLS 1.3: NewSessionTicket arrives post-handshake (RFC 8446 §4.6.1).
++# --- end hello_eink patch -----------------------------------------------------
++
+ if MBEDTLS_SSL_PROTO_TLS1_3
+ 
+-config MBEDTLS_SSL_SESSION_TICKETS
+-	bool "Support for RFC 5077 session tickets in TLS 1.3"
+ 
+ config MBEDTLS_SSL_EARLY_DATA
+ 	bool "TLS 1.3 early data (0-RTT) support"

@@ -22,6 +22,7 @@ LOG_MODULE_REGISTER(ntp_sync, LOG_LEVEL_INF);
 
 #define NTP_PORT            123
 #define NTP_QUERY_TIMEOUT_MS 8000
+#define MIN_VALID_UNIX_TIME 1704067200LL /* 2024-01-01 00:00:00 UTC */
 
 static const struct device *rtc_dev = DEVICE_DT_GET(DT_NODELABEL(rtc0));
 
@@ -120,6 +121,17 @@ static int64_t rtc_to_unix(const struct rtc_time *t)
 /* =========================================================================
  * Public API
  * ========================================================================= */
+
+bool ntp_sync_time_is_valid(void)
+{
+	struct timespec ts = {0};
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0) {
+		return false;
+	}
+
+	return ts.tv_sec >= MIN_VALID_UNIX_TIME;
+}
 
 void ntp_sync_restore_from_rtc(void)
 {

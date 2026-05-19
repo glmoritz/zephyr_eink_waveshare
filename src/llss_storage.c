@@ -86,12 +86,16 @@ static struct settings_handler llss_handler = {
 
 int llss_storage_init(void)
 {
-	if (rtc_cache_magic == LLSS_STORAGE_RTC_MAGIC) {
-		LOG_INF("LLSS storage: RTC cache valid, skipping NVS read. "
-			"device_id=%s",
-			cache_device_id[0] ? cache_device_id : "(none)");
-		return 0;
-	}
+	/* RTC-RAM fast path is disabled until we have a cold-boot-safe magic.
+	 * .rtc_noinit survives deep sleep but is uninitialised on cold boot,
+	 * so the magic word can randomly match LLSS_STORAGE_RTC_MAGIC and the
+	 * code below would trust uninitialised RAM as valid credentials.
+	 * Always re-read from NVS; rebuild the in-memory cache from scratch. */
+	memset(cache_device_id,     0, sizeof(cache_device_id));
+	memset(cache_device_secret, 0, sizeof(cache_device_secret));
+	memset(cache_refresh_token, 0, sizeof(cache_refresh_token));
+	memset(cache_access_token,  0, sizeof(cache_access_token));
+	rtc_cache_magic = 0;
 
 	int rc = settings_register(&llss_handler);
 
@@ -106,7 +110,6 @@ int llss_storage_init(void)
 		return rc;
 	}
 
-	rtc_cache_magic = LLSS_STORAGE_RTC_MAGIC;
 	LOG_INF("LLSS storage loaded from NVS. device_id=%s",
 		cache_device_id[0] ? cache_device_id : "(none)");
 	return 0;
