@@ -1,11 +1,25 @@
 /*
- * NTP time synchronisation using dns_get_addr_info + sntp_simple_addr.
- * No heap allocations — DNS results land in a stack-allocated struct.
- * The PCF85063ATL RTC is updated on every successful sync and is read
- * back on boot to prime CLOCK_REALTIME before the first network sync.
+ * NTP state-machine thread.
+ *
+ * Self-contained: owns SYS_FLAG_TIME_VALID and the PCF85063A RTC update
+ * cycle.  No consumers call into this module — they just wait on the flag.
+ *
+ * Lifecycle:
+ *   1. On boot, try to seed CLOCK_REALTIME from the RTC battery cell.  If
+ *      the RTC has a believable year (>= 2024), set TIME_VALID immediately
+ *      so consumers can run while we wait for the next NTP sync.
+ *   2. Loop:
+ *        wait SYS_FLAG_WIFI_READY (no point trying NTP without network)
+ *        do one NTP query
+ *        on success: set TIME_VALID, sleep CONFIG_LLSS_NTP_SYNC_INTERVAL_S
+ *        on failure: sleep 5 s and retry; do NOT clear TIME_VALID if the
+ *        clock is still believable from the previous successful sync.
+ *
+ * Try / fail / wait.  No polling, no callbacks.
  */
 
 #include "ntp_sync.h"
+#include "system_flags.h"
 
 #include <time.h>
 
@@ -20,9 +34,14 @@
 
 LOG_MODULE_REGISTER(ntp_sync, LOG_LEVEL_INF);
 
-#define NTP_PORT            123
+#define NTP_PORT             123
 #define NTP_QUERY_TIMEOUT_MS 8000
-#define MIN_VALID_UNIX_TIME 1704067200LL /* 2024-01-01 00:00:00 UTC */
+#define MIN_VALID_UNIX_TIME  1704067200LL /* 2024-01-01 00:00:00 UTC */
+
+#define NTP_THREAD_STACK    4096
+#define NTP_THREAD_PRIORITY 11
+
+#define NTP_RETRY_BACKOFF_MS 5000
 
 static const struct device *rtc_dev = DEVICE_DT_GET(DT_NODELABEL(rtc0));
 
@@ -62,14 +81,12 @@ static int resolve_ntp(const char *host, struct sockaddr *addr_out,
 
 	k_sem_init(&state.done, 0, 1);
 
-	/* AAAA first */
 	if (dns_get_addr_info(host, DNS_QUERY_TYPE_AAAA, &dns_id,
 			      dns_ntp_cb, &state,
 			      CONFIG_LLSS_DNS_TIMEOUT_MS) == 0) {
 		k_sem_take(&state.done, K_FOREVER);
 	}
 
-	/* Fall back to A if no IPv6 result */
 	if (!state.found) {
 		k_sem_init(&state.done, 0, 1);
 		if (dns_get_addr_info(host, DNS_QUERY_TYPE_A, &dns_id,
@@ -83,13 +100,10 @@ static int resolve_ntp(const char *host, struct sockaddr *addr_out,
 		return -EHOSTUNREACH;
 	}
 
-	/* Patch in port 123 */
 	if (state.addr.ss_family == AF_INET6) {
-		((struct sockaddr_in6 *)&state.addr)->sin6_port =
-			htons(NTP_PORT);
+		((struct sockaddr_in6 *)&state.addr)->sin6_port = htons(NTP_PORT);
 	} else {
-		((struct sockaddr_in *)&state.addr)->sin_port =
-			htons(NTP_PORT);
+		((struct sockaddr_in *)&state.addr)->sin_port = htons(NTP_PORT);
 	}
 
 	memcpy(addr_out, &state.addr, state.addrlen);
@@ -101,7 +115,6 @@ static int resolve_ntp(const char *host, struct sockaddr *addr_out,
  * Time conversion helpers
  * ========================================================================= */
 
-/* Unix timestamp + nsec → rtc_time (UTC) using standard gmtime_r */
 static int timespec_to_rtc(const struct timespec *ts, struct rtc_time *t)
 {
 	if (gmtime_r(&ts->tv_sec, rtc_time_to_tm(t)) == NULL) {
@@ -111,29 +124,27 @@ static int timespec_to_rtc(const struct timespec *ts, struct rtc_time *t)
 	return 0;
 }
 
-/* rtc_time → Unix seconds via Zephyr's timeutil_timegm() */
 static int64_t rtc_to_unix(const struct rtc_time *t)
 {
-	/* rtc_time and struct tm are layout-compatible */
 	return timeutil_timegm64((const struct tm *)t);
 }
 
-/* =========================================================================
- * Public API
- * ========================================================================= */
-
-bool ntp_sync_time_is_valid(void)
+static bool clock_realtime_is_valid(void)
 {
 	struct timespec ts = {0};
 
 	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0) {
 		return false;
 	}
-
 	return ts.tv_sec >= MIN_VALID_UNIX_TIME;
 }
 
-void ntp_sync_restore_from_rtc(void)
+/* =========================================================================
+ * Restore CLOCK_REALTIME from the PCF85063A battery-backed RTC.
+ * Called once at thread entry.
+ * ========================================================================= */
+
+static void restore_from_rtc(void)
 {
 	if (!device_is_ready(rtc_dev)) {
 		LOG_WRN("RTC not ready, cannot restore time");
@@ -147,9 +158,8 @@ void ntp_sync_restore_from_rtc(void)
 		return;
 	}
 
-	/* Reject obviously-unset RTC (year before 2024) */
 	if (t.tm_year + 1900 < 2024) {
-		LOG_WRN("RTC not set (year %d) — awaiting NTP sync",
+		LOG_WRN("RTC not set (year %d) — awaiting NTP",
 			t.tm_year + 1900);
 		return;
 	}
@@ -157,7 +167,7 @@ void ntp_sync_restore_from_rtc(void)
 	int64_t unix_sec = rtc_to_unix(&t);
 
 	if (unix_sec < 0) {
-		LOG_WRN("rtc_to_unix returned negative value");
+		LOG_WRN("rtc_to_unix returned negative");
 		return;
 	}
 
@@ -174,7 +184,11 @@ void ntp_sync_restore_from_rtc(void)
 		t.tm_hour, t.tm_min, t.tm_sec);
 }
 
-int ntp_sync_once(void)
+/* =========================================================================
+ * One NTP query + RTC + CLOCK_REALTIME update.  Caller is the thread.
+ * ========================================================================= */
+
+static int do_ntp_sync_once(void)
 {
 	struct sockaddr_storage addr;
 	socklen_t addrlen;
@@ -183,7 +197,7 @@ int ntp_sync_once(void)
 			     (struct sockaddr *)&addr, &addrlen);
 
 	if (rc) {
-		LOG_ERR("NTP DNS resolve '%s' failed: %d",
+		LOG_WRN("NTP DNS resolve '%s' failed: %d",
 			CONFIG_LLSS_NTP_SERVER, rc);
 		return rc;
 	}
@@ -193,11 +207,10 @@ int ntp_sync_once(void)
 	rc = sntp_simple_addr((struct sockaddr *)&addr, addrlen,
 			      NTP_QUERY_TIMEOUT_MS, &sntp_ts);
 	if (rc) {
-		LOG_ERR("NTP query failed: %d", rc);
+		LOG_WRN("NTP query failed: %d", rc);
 		return rc;
 	}
 
-	/* Update RTC */
 	struct rtc_time rtc_t = {0};
 	struct timespec tspec = {
 		.tv_sec  = (time_t)sntp_ts.seconds,
@@ -210,13 +223,13 @@ int ntp_sync_once(void)
 	}
 
 	if (device_is_ready(rtc_dev)) {
-		rc = rtc_set_time(rtc_dev, &rtc_t);
-		if (rc) {
-			LOG_WRN("rtc_set_time failed: %d", rc);
+		int wrc = rtc_set_time(rtc_dev, &rtc_t);
+
+		if (wrc) {
+			LOG_WRN("rtc_set_time failed: %d", wrc);
 		}
 	}
 
-	/* Update system clock for mbedTLS cert validation */
 	sys_clock_settime(SYS_CLOCK_REALTIME, &tspec);
 
 	LOG_INF("NTP synced: %04d-%02d-%02d %02d:%02d:%02d UTC",
@@ -226,25 +239,40 @@ int ntp_sync_once(void)
 }
 
 /* =========================================================================
- * Periodic sync via system workqueue
+ * NTP thread — try / fail / wait
  * ========================================================================= */
 
-static void ntp_sync_work_handler(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(ntp_sync_work, ntp_sync_work_handler);
-
-static void ntp_sync_work_handler(struct k_work *work)
+static void ntp_thread_fn(void *a, void *b, void *c)
 {
-	ARG_UNUSED(work);
+	ARG_UNUSED(a);
+	ARG_UNUSED(b);
+	ARG_UNUSED(c);
 
-	ntp_sync_once();
+	restore_from_rtc();
+	if (clock_realtime_is_valid()) {
+		sys_flag_set(SYS_FLAG_TIME_VALID);
+	}
 
-	/* Reschedule regardless of success/failure */
-	k_work_reschedule(&ntp_sync_work,
-			  K_SECONDS(CONFIG_LLSS_NTP_SYNC_INTERVAL_S));
+	while (true) {
+		/* Without WiFi, NTP is impossible.  Block here — no polling. */
+		sys_flag_wait_all(SYS_FLAG_WIFI_READY, K_FOREVER);
+
+		sys_io_acquire();
+		int rc = do_ntp_sync_once();
+		sys_io_release();
+
+		if (rc == 0) {
+			sys_flag_set(SYS_FLAG_TIME_VALID);
+			k_sleep(K_SECONDS(CONFIG_LLSS_NTP_SYNC_INTERVAL_S));
+		} else {
+			/* Don't clear TIME_VALID — the RTC reading we restored
+			 * at boot may still be good enough for cert validation.
+			 * Only fresh sync failed; retry shortly. */
+			k_sleep(K_MSEC(NTP_RETRY_BACKOFF_MS));
+		}
+	}
 }
 
-void ntp_sync_start(void)
-{
-	/* First sync: short delay so WiFi/DNS are fully up */
-	k_work_reschedule(&ntp_sync_work, K_SECONDS(2));
-}
+K_THREAD_DEFINE(ntp_thread, NTP_THREAD_STACK,
+		ntp_thread_fn, NULL, NULL, NULL,
+		NTP_THREAD_PRIORITY, 0, 0);

@@ -6,6 +6,7 @@
  * threads.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include <zephyr/device.h>
@@ -17,12 +18,16 @@
 #include <lvgl.h>
 
 #include "display_thread.h"
+#include "system_flags.h"
 
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
 #define DISPLAY_NODE            DT_CHOSEN(zephyr_display)
 #define DISPLAY_THREAD_STACK    12288
 #define DISPLAY_THREAD_PRIORITY 12
+
+#define STATUS_THREAD_STACK    2048
+#define STATUS_THREAD_PRIORITY 13   /* lower priority than frame renderer */
 
 /* =========================================================================
  * Shared PNG buffer (PSRAM)
@@ -109,6 +114,77 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 K_THREAD_DEFINE(display_thread, DISPLAY_THREAD_STACK,
 		display_thread_fn, NULL, NULL, NULL,
 		DISPLAY_THREAD_PRIORITY, 0, 0);
+
+/* =========================================================================
+ * Status thread — consumer of system_flags
+ *
+ * Wakes whenever any bit in `system_flags` changes (via K_POLL_TYPE_EVENT)
+ * and re-renders a compact status string into the existing sub-label.
+ * Wiring only — actual status icons / glyphs go here later.  The point of
+ * this thread is to demonstrate the flag-driven render pattern without
+ * polling and without coupling the producers to LVGL.
+ * ========================================================================= */
+
+static void render_status_from_flags_locked(uint32_t flags)
+{
+	if (!sub_label) {
+		return;
+	}
+
+	char wifi_glyph[8] = "WiFi:?";
+
+	if (flags & SYS_FLAG_WIFI_READY) {
+		strncpy(wifi_glyph, "WiFi+", sizeof(wifi_glyph) - 1);
+	} else if (flags & SYS_FLAG_WIFI_PROVISIONING) {
+		strncpy(wifi_glyph, "WiFi*", sizeof(wifi_glyph) - 1);
+	} else {
+		strncpy(wifi_glyph, "WiFi-", sizeof(wifi_glyph) - 1);
+	}
+
+	const char *time_glyph = (flags & SYS_FLAG_TIME_VALID)    ? "T+" : "T-";
+	const char *auth_glyph = (flags & SYS_FLAG_LLSS_AUTHORIZED) ? "A+" : "A-";
+
+	char line[32];
+
+	snprintf(line, sizeof(line), "%s %s %s", wifi_glyph, time_glyph, auth_glyph);
+	lv_label_set_text(sub_label, line);
+	ui_refresh_locked();
+}
+
+static void status_thread_fn(void *arg1, void *arg2, void *arg3)
+{
+	ARG_UNUSED(arg1);
+	ARG_UNUSED(arg2);
+	ARG_UNUSED(arg3);
+
+	struct k_poll_event evt = K_POLL_EVENT_INITIALIZER(
+		K_POLL_TYPE_SIGNAL,
+		K_POLL_MODE_NOTIFY_ONLY,
+		&system_flags_changed);
+
+	/* Initial render so the status reflects whatever was set before this
+	 * thread started (e.g. SYS_FLAG_TIME_VALID restored from RTC). */
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	render_status_from_flags_locked(sys_flag_get());
+	k_mutex_unlock(&lvgl_mutex);
+
+	while (true) {
+		k_poll(&evt, 1, K_FOREVER);
+		/* k_poll signal must be reset by hand after wake-up. */
+		k_poll_signal_reset(&system_flags_changed);
+		evt.state = K_POLL_STATE_NOT_READY;
+
+		uint32_t snapshot = sys_flag_get();
+
+		k_mutex_lock(&lvgl_mutex, K_FOREVER);
+		render_status_from_flags_locked(snapshot);
+		k_mutex_unlock(&lvgl_mutex);
+	}
+}
+
+K_THREAD_DEFINE(display_status_thread, STATUS_THREAD_STACK,
+		status_thread_fn, NULL, NULL, NULL,
+		STATUS_THREAD_PRIORITY, 0, 0);
 
 /* =========================================================================
  * Public API

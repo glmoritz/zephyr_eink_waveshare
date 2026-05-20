@@ -10,6 +10,7 @@ project(hello_eink)
 
 target_sources(app PRIVATE
     src/main.c
+    src/system_flags.c
     src/display_thread.c
     src/llss_thread.c
     src/display_ssd16xx_800x480.c

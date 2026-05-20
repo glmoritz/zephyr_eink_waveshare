@@ -24,7 +24,7 @@
 #include "llss_client.h"
 #include "llss_storage.h"
 #include "llss_thread.h"
-#include "ntp_sync.h"
+#include "system_flags.h"
 #include "wifi_prov.h"
 
 LOG_MODULE_REGISTER(llss, LOG_LEVEL_INF);
@@ -38,7 +38,6 @@ LOG_MODULE_REGISTER(llss, LOG_LEVEL_INF);
 
 enum app_state {
 	STATE_BOOTING = 0,
-	STATE_WIFI_CONNECTING,
 	STATE_REGISTERING,
 	STATE_WAITING_AUTHORIZATION,
 	STATE_REFRESHING,
@@ -119,40 +118,11 @@ INPUT_CALLBACK_DEFINE(NULL, on_input, NULL);
  * WiFi / session
  * ========================================================================= */
 
-static K_SEM_DEFINE(sem_wifi_up, 0, 1);
+/* WiFi readiness is signalled via SYS_FLAG_WIFI_READY (see system_flags.h),
+ * NTP time via SYS_FLAG_TIME_VALID, authorization via SYS_FLAG_LLSS_AUTHORIZED.
+ * Producers set/clear; the main loop waits on the bits it needs. */
 static atomic_t session_reset_requested = ATOMIC_INIT(0);
 static bool session_open;
-
-static void wait_for_valid_time(void)
-{
-	int rc;
-
-	if (ntp_sync_time_is_valid()) {
-		LOG_INF("CLOCK_REALTIME already valid; skipping initial NTP wait");
-		return;
-	}
-
-	ui_set_status("Syncing time...", CONFIG_LLSS_NTP_SERVER);
-
-	while (!ntp_sync_time_is_valid()) {
-		if (app_state == STATE_WIFI_CONNECTING) {
-			k_sem_take(&sem_wifi_up, K_FOREVER);
-			if (ntp_sync_time_is_valid()) {
-				return;
-			}
-			ui_set_status("Syncing time...", CONFIG_LLSS_NTP_SERVER);
-		}
-
-		rc = ntp_sync_once();
-		if (ntp_sync_time_is_valid()) {
-			return;
-		}
-
-		LOG_WRN("Clock still invalid after NTP attempt (%d) — retry in 5s", rc);
-		ui_set_status("Waiting for time sync", "Retrying in 5s...");
-		k_msleep(5000);
-	}
-}
 
 void llss_on_wifi(enum wifi_prov_state state, const char *info)
 {
@@ -162,22 +132,29 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 	case WIFI_PROV_CONNECTING:
 		LOG_INF("WiFi connecting: %s", info);
 		ui_set_status("Connecting to WiFi...", info);
+		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	case WIFI_PROV_CONNECTED:
 		LOG_INF("WiFi connected: %s", info);
 		snprintf(msg, sizeof(msg), "IP: %s", info);
 		ui_set_status("WiFi connected", msg);
-		k_sem_give(&sem_wifi_up);
+		sys_flag_clear(SYS_FLAG_WIFI_PROVISIONING);
+		sys_flag_set(SYS_FLAG_WIFI_READY);
 		break;
 	case WIFI_PROV_DISCONNECTED:
 		LOG_WRN("WiFi disconnected");
 		ui_set_status("WiFi disconnected", "Reconnecting...");
+		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
+		/* Tear down the held TLS session — the underlying TCP is dead.
+		 * The next iteration will block on SYS_FLAG_WIFI_READY at the
+		 * top of the loop until the link comes back. */
 		atomic_set(&session_reset_requested, 1);
-		app_state = STATE_WIFI_CONNECTING;
 		break;
 	case WIFI_PROV_AP_ACTIVE:
 		snprintf(msg, sizeof(msg), "Connect to: %s", info);
 		ui_set_status("WiFi Setup — open browser:", msg);
+		sys_flag_clear(SYS_FLAG_WIFI_READY);
+		sys_flag_set(SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	default:
 		break;
@@ -313,6 +290,7 @@ static enum app_state do_wait_authorization(void)
 		strncpy(refresh_token, new_refresh, sizeof(refresh_token) - 1);
 		llss_storage_save_tokens(refresh_token, "");
 		LOG_INF("Authorized — got refresh token");
+		sys_flag_set(SYS_FLAG_LLSS_AUTHORIZED);
 		return STATE_REFRESHING;
 	} else if (rc == 0 && auth_status == LLSS_AUTH_PENDING) {
 		LOG_INF("Still pending — retry in 15s");
@@ -321,6 +299,7 @@ static enum app_state do_wait_authorization(void)
 	} else if (auth_status == LLSS_AUTH_REJECTED ||
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		LOG_ERR("Device rejected/revoked");
+		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
 		ui_set_status("Device rejected", "Contact admin");
 		return STATE_ERROR;
 	}
@@ -395,6 +374,7 @@ static enum app_state do_authenticate(void)
 				sizeof(refresh_token) - 1);
 			llss_storage_save_tokens(refresh_token, access_token);
 			update_access_token(new_access);
+			sys_flag_set(SYS_FLAG_LLSS_AUTHORIZED);
 			LOG_INF("Authenticated — polling");
 			return STATE_POLLING;
 		}
@@ -406,6 +386,7 @@ static enum app_state do_authenticate(void)
 	} else if (auth_status == LLSS_AUTH_REJECTED ||
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		session_close_on_net_error(-EACCES);
+		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
 		ui_set_status("Device rejected", "Contact admin");
 		return STATE_ERROR;
 	}
@@ -544,15 +525,11 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	llss_storage_load(device_id, device_secret, refresh_token, access_token);
 	LOG_INF("Stored device_id: %s", device_id[0] ? device_id : "(none)");
 
-	/* Block until WiFi is up (signalled by llss_on_wifi) */
-	k_sem_take(&sem_wifi_up, K_FOREVER);
-
+	/* Hardware ID derived from the link-layer MAC.  The MAC is assigned by
+	 * the WiFi stack at boot before any association, so we don't need to
+	 * wait for SYS_FLAG_WIFI_READY here — only for net_if_get_default(). */
 	build_hardware_id();
 	LOG_INF("Hardware ID: %s", hardware_id);
-
-	ntp_sync_restore_from_rtc();
-	wait_for_valid_time();
-	ntp_sync_start();
 
 	int rc = llss_client_init();
 
@@ -565,12 +542,13 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	}
 
 	while (true) {
-		session_check_reset();
+		/* try / fail / wait.  If WiFi is up and clock is valid we
+		 * proceed; if either drops, we block here until both return.
+		 * No polling, no special "I'm waiting for WiFi" state. */
+		sys_flag_wait_all(SYS_FLAG_WIFI_READY | SYS_FLAG_TIME_VALID,
+				  K_FOREVER);
 
-		if (app_state == STATE_WIFI_CONNECTING) {
-			k_msleep(100);
-			continue;
-		}
+		session_check_reset();
 
 		/* Button events are only serviced while polling */
 		if (app_state == STATE_POLLING) {
