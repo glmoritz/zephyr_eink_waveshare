@@ -1,0 +1,4 @@
+name: wifi_prov_sim
+build:
+  cmake: .
+  kconfig: Kconfig

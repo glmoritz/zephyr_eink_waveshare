@@ -5,6 +5,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 
+#include "section_attrs.h"
+
 LOG_MODULE_REGISTER(llss_storage, LOG_LEVEL_DBG);
 
 /* =========================================================================
@@ -28,16 +30,11 @@ LOG_MODULE_REGISTER(llss_storage, LOG_LEVEL_DBG);
  * the Settings/NVS flash read entirely. */
 #define LLSS_STORAGE_RTC_MAGIC  0x4C535343U  /* 'LSSC' */
 
-static uint32_t rtc_cache_magic
-	__attribute__((used, section(".rtc_noinit")));
-static char  cache_device_id[LLSS_DEVICE_ID_MAX]
-	__attribute__((used, section(".rtc_noinit")));
-static char  cache_device_secret[LLSS_DEVICE_SECRET_MAX]
-	__attribute__((used, section(".rtc_noinit")));
-static char  cache_refresh_token[LLSS_TOKEN_MAX]
-	__attribute__((used, section(".rtc_noinit")));
-static char  cache_access_token[LLSS_TOKEN_MAX]
-	__attribute__((used, section(".rtc_noinit")));
+static uint32_t rtc_cache_magic                       LLSS_RTC_NOINIT;
+static char  cache_device_id[LLSS_DEVICE_ID_MAX]      LLSS_RTC_NOINIT;
+static char  cache_device_secret[LLSS_DEVICE_SECRET_MAX] LLSS_RTC_NOINIT;
+static char  cache_refresh_token[LLSS_TOKEN_MAX]      LLSS_RTC_NOINIT;
+static char  cache_access_token[LLSS_TOKEN_MAX]       LLSS_RTC_NOINIT;
 
 /* =========================================================================
  * settings_handler

@@ -1,0 +1,21 @@
+/*
+ * Devicetree overlay for the native_sim/native/64 board variant.
+ *
+ * - Resizes the built-in SDL display to match the Waveshare 7.5" 800x480
+ *   panel (rendered as 8-bit luminance — the LVGL pipeline already runs in
+ *   8 bpp; the 4-level quantization in display_thread.c is unchanged).
+ * - Publishes the built-in zephyr,rtc-emul as the zephyr,rtc chosen so
+ *   ntp_sync.c (which reads DT_CHOSEN(zephyr_rtc)) reaches it the same
+ *   way the ESP32 overlay exposes its PCF85063A.
+ */
+
+/ {
+	chosen {
+		zephyr,rtc = &rtc;
+	};
+};
+
+&sdl_dc {
+	width = <800>;
+	height = <480>;
+};

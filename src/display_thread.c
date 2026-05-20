@@ -18,6 +18,7 @@
 #include <lvgl.h>
 
 #include "display_thread.h"
+#include "section_attrs.h"
 #include "system_flags.h"
 
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
@@ -26,7 +27,10 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 #define DISPLAY_THREAD_STACK    12288
 #define DISPLAY_THREAD_PRIORITY 12
 
-#define STATUS_THREAD_STACK    2048
+/* Stack must accommodate lv_task_handler()'s recursion (LVGL traverses the
+ * object tree to repaint), plus the label-set call.  2 KB overflowed and
+ * corrupted neighbouring kernel state when the AP captive portal was active. */
+#define STATUS_THREAD_STACK    4096
 #define STATUS_THREAD_PRIORITY 13   /* lower priority than frame renderer */
 
 /* =========================================================================
@@ -34,7 +38,7 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
  * ========================================================================= */
 
 static uint8_t display_png_buf[CONFIG_LLSS_FRAME_BUF_SIZE]
-	__attribute__((section(".ext_ram_noinit.llss_display")));
+	LLSS_EXT_RAM_NOINIT("llss_display");
 static size_t display_png_len;
 
 static K_SEM_DEFINE(display_work_sem, 0, 1);  /* signals work available */

@@ -1,0 +1,8 @@
+config WIFI_PROV
+	bool "WiFi provisioning (native_sim stub)"
+	default y
+	help
+	  Stub provisioning module for native_sim builds. The TAP interface
+	  is already configured by NET_CONFIG_AUTO_INIT, so wifi_prov_start()
+	  simply announces WIFI_PROV_CONNECTED to the application callback
+	  after a short delay.

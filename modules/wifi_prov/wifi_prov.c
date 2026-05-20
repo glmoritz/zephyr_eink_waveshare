@@ -373,28 +373,64 @@ static int sta_connect(const char *ssid, const char *pass)
 		return -ETIMEDOUT;
 	}
 
-	if (k_sem_take(&sem_ip_ready, K_SECONDS(15)) != 0) {
-		LOG_WRN("DHCP timeout");
+	/* Wait until we have *at least one* family of address — IPv4 via DHCP
+	 * or IPv6 via SLAAC, whichever arrives first.  Network might be
+	 * IPv4-only, IPv6-only, or dual-stack; we don't know in advance and
+	 * we don't want to insist on the missing one.  After the first family
+	 * is up, we give the second a short grace window but proceed either
+	 * way. */
+	struct k_poll_event ip_events[2];
+
+	k_poll_event_init(&ip_events[0], K_POLL_TYPE_SEM_AVAILABLE,
+			  K_POLL_MODE_NOTIFY_ONLY, &sem_ip_ready);
+	k_poll_event_init(&ip_events[1], K_POLL_TYPE_SEM_AVAILABLE,
+			  K_POLL_MODE_NOTIFY_ONLY, &sem_ip6_ready);
+
+	LOG_INF("Waiting for first IP (v4 or v6) up to 25 s...");
+	if (k_poll(ip_events, ARRAY_SIZE(ip_events), K_SECONDS(25)) < 0) {
+		LOG_WRN("No IP after 25 s — aborting");
 		return -ETIMEDOUT;
+	}
+
+	bool got_v4 = (ip_events[0].state == K_POLL_STATE_SEM_AVAILABLE);
+	bool got_v6 = (ip_events[1].state == K_POLL_STATE_SEM_AVAILABLE);
+
+	if (got_v4) {
+		k_sem_take(&sem_ip_ready, K_NO_WAIT);
+	}
+	if (got_v6) {
+		k_sem_take(&sem_ip6_ready, K_NO_WAIT);
+	}
+
+	LOG_INF("Got %s — waiting up to 5 s for the other family",
+		got_v4 ? (got_v6 ? "v4+v6" : "v4") : "v6");
+
+	/* Bonus wait for the family that didn't fire yet.  Harmless if
+	 * already taken; just no-op-blocks for up to 5 s otherwise. */
+	if (!got_v4) {
+		k_sem_take(&sem_ip_ready, K_SECONDS(5));
+	}
+	if (!got_v6) {
+		k_sem_take(&sem_ip6_ready, K_SECONDS(5));
 	}
 
 	log_dns_servers();
 
-	/* Wait for SLAAC global IPv6 — typically completes within 2-3 s after
-	 * the router's RA is processed and DAD finishes. 5 s is conservative
-	 * but keeps boot fast on dual-stack networks. */
-	LOG_INF("Waiting for IPv6 SLAAC (up to 30 s)...");
-	if (k_sem_take(&sem_ip6_ready, K_SECONDS(30)) != 0) {
-		LOG_WRN("IPv6 SLAAC timed out — continuing IPv4-only");
-	}
+	/* Build status string from whichever address strings are populated. */
+	char combined[NET_IPV4_ADDR_LEN + 3 + NET_IPV6_ADDR_LEN];
 
-	/* Build status string: "<ipv4>" or "<ipv4> / <ipv6>" */
-	char combined[NET_IPV4_ADDR_LEN + 2 + NET_IPV6_ADDR_LEN];
-
-	if (ip6_str[0] != '\0') {
+	if (ip_str[0] && ip6_str[0]) {
 		snprintf(combined, sizeof(combined), "%s / %s", ip_str, ip6_str);
-	} else {
+	} else if (ip_str[0]) {
 		snprintf(combined, sizeof(combined), "%s", ip_str);
+	} else if (ip6_str[0]) {
+		snprintf(combined, sizeof(combined), "%s", ip6_str);
+	} else {
+		/* Defensive — k_poll said something fired but neither address
+		 * string is populated.  Could happen if the event handler set
+		 * a sem before writing the string; treat as failure. */
+		LOG_WRN("IP event fired but no address string set");
+		return -ENONET;
 	}
 
 	set_state(WIFI_PROV_CONNECTED, combined);
@@ -459,6 +495,18 @@ static void ap_disable(void)
 
 	net_dhcpv4_server_stop(iface);
 	net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, iface, NULL, 0);
+
+	/* Drop the manually-bound 192.168.4.1 so a later ap_enable() can
+	 * net_if_ipv4_addr_add() it again without a duplicate-add failure
+	 * that leaves the SAP iface without a usable IPv4 stack.  Silently
+	 * tolerate "not there" — we may be called from a state where the
+	 * binding was already removed (or never existed). */
+	struct in_addr addr;
+
+	if (net_addr_pton(AF_INET, AP_IP_STR, &addr) == 0) {
+		(void)net_if_ipv4_addr_rm(iface, &addr);
+	}
+
 	k_msleep(500);
 }
 
@@ -665,8 +713,19 @@ static void captive_portal_thread(void *p1, void *p2, void *p3)
 	zsock_close(srv);
 }
 
+static bool portal_thread_started;
+
 static void portal_start(void)
 {
+	/* If we've spun up the portal thread before, the previous instance
+	 * will have set portal_running=false and returned by the time we get
+	 * here.  Wait for it to fully exit before reusing the same
+	 * portal_thread_data / portal_stack — k_thread_create on a struct that
+	 * isn't yet in DEAD state is undefined behaviour. */
+	if (portal_thread_started) {
+		k_thread_join(&portal_thread_data, K_FOREVER);
+	}
+
 	portal_running = true;
 	portal_got_creds = false;
 
@@ -674,6 +733,7 @@ static void portal_start(void)
 			captive_portal_thread, NULL, NULL, NULL,
 			PORTAL_PRIORITY, 0, K_NO_WAIT);
 	k_thread_name_set(&portal_thread_data, "captive_portal");
+	portal_thread_started = true;
 }
 
 /* =========================================================================
@@ -730,26 +790,32 @@ void wifi_prov_start_ap(void)
 	snprintf(ap_ssid_buf, sizeof(ap_ssid_buf), "LLSS-%02X%02X%02X",
 		 ll->addr[3], ll->addr[4], ll->addr[5]);
 
-	LOG_INF("Starting AP: %s", ap_ssid_buf);
+	/* Loop instead of recursing.  Each previous design failure-retry path
+	 * called wifi_prov_start_ap() recursively, leaking a caller stack
+	 * frame per retry — eventually blows the calling thread's stack. */
+	while (true) {
+		LOG_INF("Starting AP: %s", ap_ssid_buf);
 
-	if (ap_enable(ap_ssid_buf) != 0) {
-		LOG_ERR("ap_enable failed — retrying in 3s");
-		k_msleep(3000);
-		wifi_prov_start_ap();
-		return;
-	}
+		if (ap_enable(ap_ssid_buf) != 0) {
+			LOG_ERR("ap_enable failed — retrying in 3s");
+			k_msleep(3000);
+			continue;
+		}
 
-	portal_start();
+		portal_start();
 
-	while (!portal_got_creds) {
-		k_msleep(200);
-	}
+		while (!portal_got_creds) {
+			k_msleep(200);
+		}
 
-	ap_disable();
+		ap_disable();
 
-	if (sta_connect(portal_ssid, portal_pass) != 0) {
+		if (sta_connect(portal_ssid, portal_pass) == 0) {
+			return;
+		}
+
 		LOG_WRN("STA failed after provisioning — restart AP");
-		wifi_prov_start_ap();
+		/* loop back to ap_enable */
 	}
 }
 

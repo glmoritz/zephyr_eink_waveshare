@@ -43,7 +43,7 @@ LOG_MODULE_REGISTER(ntp_sync, LOG_LEVEL_INF);
 
 #define NTP_RETRY_BACKOFF_MS 5000
 
-static const struct device *rtc_dev = DEVICE_DT_GET(DT_NODELABEL(rtc0));
+static const struct device *rtc_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_rtc));
 
 /* =========================================================================
  * DNS helper — heap-free, same pattern as llss_client

@@ -262,6 +262,20 @@ static enum app_state do_register(void)
 		return STATE_AUTHENTICATING;
 	}
 
+	if (rc == 409) {
+		/* Server already has a record for this hardware_id.  We don't
+		 * hold the device_secret locally (NVS empty or wiped on
+		 * reflash), so we can't /auth/devices/token to advance.  Go
+		 * to the WAITING state and let either:
+		 *   (a) the admin clear the server record, after which our
+		 *       next register attempt will succeed, or
+		 *   (b) the device be authorized as-is by the admin (we can't
+		 *       use it without the secret, but the record is valid). */
+		LOG_WRN("Already registered (409) — going to pending.");
+		ui_set_status("Already registered", "Waiting for admin");
+		return STATE_WAITING_AUTHORIZATION;
+	}
+
 	LOG_ERR("Registration failed: %d — retry in 10s", rc);
 	ui_set_status("Server unreachable", "Retrying in 10s...");
 	k_msleep(10000);
@@ -271,6 +285,17 @@ static enum app_state do_register(void)
 static enum app_state do_wait_authorization(void)
 {
 	ui_set_status("Waiting for admin", "authorization...");
+
+	/* If we reached WAITING without ever having a device_secret (most
+	 * likely we came here from a 409 on /register), there is nothing to
+	 * authenticate with.  Sleep, then retry /register — the admin may
+	 * have cleared the server-side record in the meantime, which lets
+	 * the next register attempt succeed cleanly. */
+	if (!device_secret[0]) {
+		LOG_INF("No device_secret stored — retrying /register in 30s");
+		k_msleep(30000);
+		return STATE_REGISTERING;
+	}
 
 	int rc = session_ensure();
 
@@ -544,9 +569,24 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	while (true) {
 		/* try / fail / wait.  If WiFi is up and clock is valid we
 		 * proceed; if either drops, we block here until both return.
-		 * No polling, no special "I'm waiting for WiFi" state. */
-		sys_flag_wait_all(SYS_FLAG_WIFI_READY | SYS_FLAG_TIME_VALID,
-				  K_FOREVER);
+		 * No polling, no special "I'm waiting for WiFi" state.
+		 *
+		 * 30 s timeout is just so a stuck wait surfaces in the serial
+		 * log instead of being silent — the wait is still blocking
+		 * for as long as needed. */
+		uint32_t needed = SYS_FLAG_WIFI_READY | SYS_FLAG_TIME_VALID;
+		uint32_t got = sys_flag_wait_all(needed, K_SECONDS(30));
+
+		if (got == 0) {
+			uint32_t cur = sys_flag_get();
+
+			LOG_WRN("LLSS stuck waiting: have=0x%08x  "
+				"WIFI_READY=%d  TIME_VALID=%d",
+				cur,
+				!!(cur & SYS_FLAG_WIFI_READY),
+				!!(cur & SYS_FLAG_TIME_VALID));
+			continue;
+		}
 
 		session_check_reset();
 

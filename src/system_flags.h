@@ -60,7 +60,13 @@ extern atomic_t system_io_inflight;
 
 static inline void sys_flag_set(uint32_t bits)
 {
-	k_event_set(&system_flags, bits);
+	/* k_event_post(bits) OR-s the bits in without touching other bits.
+	 * Do NOT use k_event_set() here — that one *replaces* the whole event
+	 * mask with `bits`, which silently wipes every other flag a different
+	 * producer had previously set.  (Real bug we tripped on: NTP set
+	 * TIME_VALID, then WiFi set WIFI_READY with k_event_set, blanking
+	 * TIME_VALID and trapping the LLSS thread on its wait_all forever.) */
+	k_event_post(&system_flags, bits);
 	k_poll_signal_raise(&system_flags_changed, 0);
 }
 

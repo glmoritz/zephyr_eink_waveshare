@@ -345,9 +345,7 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 		net_addr_ntop(family, raw_addr, addr_buf, sizeof(addr_buf));
 	}
 
-	/* A/B: pinned back to TLS 1.2 to isolate whether traefik's 400 on this
-	 * endpoint is specific to Zephyr/mbedTLS's TLS 1.3 ClientHello shape. */
-	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_2);
+	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_3);
 	if (sock < 0) {
 		LOG_DBG("socket(af=%d): %d", family, errno);
 		return -errno;
