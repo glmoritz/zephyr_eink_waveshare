@@ -18,7 +18,9 @@ project(hello_eink)
 target_sources(app PRIVATE
     src/main.c
     src/system_flags.c
+    src/input_events.c
     src/display_thread.c
+    src/device_ui.c
     src/llss_thread.c
     src/llss_storage.c
     src/llss_client.c

@@ -163,23 +163,23 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 			  struct llss_device_state *state_out);
 
 /**
- * @brief Fetch a PNG frame from the server.
+ * @brief Fetch a PNG frame from the server into a caller-provided buffer.
  *
- * The returned pointer points into an internal static SPIRAM buffer.
- * The caller must not free it and must not call llss_fetch_frame() again
- * until it has finished using the data.
+ * The HTTP body is written directly into @p dst (no internal copy), so the
+ * caller can hand a display pipeline buffer straight to the network stack.
  *
  * @param access_token  Valid Bearer access token.
  * @param device_id     Registered device ID.
  * @param frame_id      Frame ID to fetch.
- * @param buf_out       Set to allocated PNG buffer pointer on success.
- * @param len_out       Set to PNG buffer length in bytes on success.
- * @return 0 on success, -EACCES on 401, -ENOMEM if allocation fails,
+ * @param dst           Destination buffer for the PNG body.
+ * @param dst_size      Capacity of @p dst in bytes.
+ * @param len_out       Set to bytes written on success.
+ * @return 0 on success, -EACCES on 401, -ENODATA on empty body,
  *         negative errno or positive HTTP status on other errors.
  */
 int llss_fetch_frame(const char *access_token, const char *device_id,
 		     const char *frame_id,
-		     uint8_t **buf_out, size_t *len_out);
+		     uint8_t *dst, size_t dst_size, size_t *len_out);
 
 /**
  * @brief Send a button input event to the server.

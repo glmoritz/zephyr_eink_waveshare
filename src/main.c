@@ -26,9 +26,9 @@ int main(void)
 	LOG_INF("=== LLSS e-Ink Client v%s ===", CONFIG_LLSS_FIRMWARE_VERSION);
 
 	ui_init();
+	ui_log_push("=== LLSS e-Ink Client v" CONFIG_LLSS_FIRMWARE_VERSION " ===");
 
 	wifi_prov_init(llss_on_wifi);
-	ui_set_status("Connecting to WiFi...", NULL);
 	wifi_prov_start();
 
 	return 0;

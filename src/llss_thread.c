@@ -14,13 +14,18 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <zephyr/init.h>
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/sys/atomic.h>
 
+#include "device_ui.h"
 #include "display_thread.h"
+#include "input_events.h"
 #include "llss_client.h"
 #include "llss_storage.h"
 #include "llss_thread.h"
@@ -67,52 +72,203 @@ static int poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
  * Button input
  * ========================================================================= */
 
+#define LONG_PRESS_MS 500
+
 struct button_event {
-	const char *name;
-	const char *type;
+	enum ui_btn btn;
+	enum ui_evt evt;
 };
 
 K_MSGQ_DEFINE(btn_queue, sizeof(struct button_event), 8, 4);
 
-static const char *keycode_to_llss(int code)
+/* Mapped keys = 12 (8 BTN_* + ENTER + ESC + HL_LEFT + HL_RIGHT).  Unmapped
+ * codes — including the 6 IO-expander buttons reserved for device-local
+ * config — never reach the slot table and are silently dropped. */
+#define KEY_SLOTS 12
+
+/* Per-key state machine.  LONG_PRESS fires from a delayable work after
+ * LONG_PRESS_MS of continuous hold; release that arrives before the work
+ * runs fires PRESS instead.  Atomic CAS arbitrates the race between work
+ * handler and release event. */
+enum key_state {
+	KEY_IDLE = 0,
+	KEY_PRESSED,
+	KEY_LONG_FIRED,
+};
+
+struct key_slot {
+	int                       code;     /* 0 = free */
+	atomic_t                  state;
+	struct k_work_delayable   long_work;
+};
+
+static struct key_slot key_slots[KEY_SLOTS];
+
+static struct key_slot *find_slot(int code)
 {
-	switch (code) {
-	case INPUT_KEY_ENTER: return "ENTER";
-	case INPUT_KEY_ESC:   return "ESC";
-	case INPUT_KEY_LEFT:  return "HL_LEFT";
-	case INPUT_KEY_RIGHT: return "HL_RIGHT";
-	case INPUT_KEY_1:     return "BTN_1";
-	case INPUT_KEY_2:     return "BTN_2";
-	case INPUT_KEY_3:     return "BTN_3";
-	case INPUT_KEY_4:     return "BTN_4";
-	case INPUT_KEY_5:     return "BTN_5";
-	case INPUT_KEY_6:     return "BTN_6";
-	case INPUT_KEY_7:     return "BTN_7";
-	case INPUT_KEY_8:     return "BTN_8";
-	default:              return NULL;
+	struct key_slot *free_slot = NULL;
+
+	for (int i = 0; i < KEY_SLOTS; i++) {
+		if (key_slots[i].code == code) {
+			return &key_slots[i];
+		}
+		if (!free_slot && key_slots[i].code == 0) {
+			free_slot = &key_slots[i];
+		}
+	}
+	if (free_slot) {
+		free_slot->code = code;
+	}
+	return free_slot;
+}
+
+static void enqueue_event(int code, enum ui_evt evt)
+{
+	enum ui_btn btn = ui_btn_from_keycode(code);
+
+	if (btn == UI_BTN_NONE) {
+		return;
+	}
+
+	/* Device UI gets first crack — handles trigger + all menu events */
+	if (device_ui_handle_input(btn, evt)) {
+		return;
+	}
+
+	struct button_event bev = { .btn = btn, .evt = evt };
+
+	k_msgq_put(&btn_queue, &bev, K_NO_WAIT);
+}
+
+static void long_press_handler(struct k_work *work)
+{
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct key_slot *slot = CONTAINER_OF(dwork, struct key_slot, long_work);
+
+	/* CAS guards against a release that beat us to the IDLE transition. */
+	if (atomic_cas(&slot->state, KEY_PRESSED, KEY_LONG_FIRED)) {
+		enqueue_event(slot->code, UI_EVT_LONG_PRESS);
 	}
 }
+
+static int key_slots_init(void)
+{
+	for (int i = 0; i < KEY_SLOTS; i++) {
+		k_work_init_delayable(&key_slots[i].long_work, long_press_handler);
+		atomic_set(&key_slots[i].state, KEY_IDLE);
+	}
+	return 0;
+}
+SYS_INIT(key_slots_init, APPLICATION, 50);
 
 static void on_input(struct input_event *evt, void *user_data)
 {
 	ARG_UNUSED(user_data);
 
-	if (evt->type != INPUT_EV_KEY || evt->value == 0) {
+	if (evt->type != INPUT_EV_KEY) {
 		return;
 	}
 
-	const char *name = keycode_to_llss(evt->code);
-
-	if (!name) {
+	if (ui_btn_from_keycode(evt->code) == UI_BTN_NONE) {
 		return;
 	}
 
-	struct button_event bev = {.name = name, .type = "PRESS"};
+	struct key_slot *slot = find_slot(evt->code);
 
-	k_msgq_put(&btn_queue, &bev, K_NO_WAIT);
+	if (!slot) {
+		return;
+	}
+
+	if (evt->value != 0) {
+		/* Press down — arm the long-press timer.  reschedule (vs
+		 * schedule) handles a stray re-press without an intervening
+		 * release by restarting the count. */
+		atomic_set(&slot->state, KEY_PRESSED);
+		k_work_reschedule(&slot->long_work, K_MSEC(LONG_PRESS_MS));
+		return;
+	}
+
+	/* Release.  Cancel a still-pending long-press work; whoever wins the
+	 * CAS owns the event.  If we win PRESSED→IDLE the work hadn't fired
+	 * yet — emit PRESS.  Otherwise it already fired LONG_PRESS and we
+	 * drop the release silently. */
+	k_work_cancel_delayable(&slot->long_work);
+
+	if (atomic_cas(&slot->state, KEY_PRESSED, KEY_IDLE)) {
+		enqueue_event(slot->code, UI_EVT_PRESS);
+	} else {
+		atomic_set(&slot->state, KEY_IDLE);
+	}
 }
 
 INPUT_CALLBACK_DEFINE(NULL, on_input, NULL);
+
+/* =========================================================================
+ * Shell — inject button events through the input subsystem
+ *
+ * Goes through input_report_key() so the same on_input() callback runs as
+ * for the physical IO-expander buttons.  Useful for bring-up before the
+ * expander is wired and for reproducing protocol issues from a console.
+ * ========================================================================= */
+
+static int shell_btn(const struct shell *sh, size_t argc, char **argv,
+		     bool long_press)
+{
+	if (argc < 2) {
+		shell_error(sh, "Usage: btn %s <NAME>", long_press ? "long" : "press");
+		shell_print(sh, "  NAME: BTN_1..BTN_8, ENTER, ESC, HL_LEFT, HL_RIGHT");
+		return -EINVAL;
+	}
+
+	int code = ui_btn_to_keycode(ui_btn_from_name(argv[1]));
+
+	if (code < 0) {
+		shell_error(sh, "Unknown button: %s", argv[1]);
+		return -EINVAL;
+	}
+
+	int rc = input_report_key(NULL, code, 1, true, K_FOREVER);
+
+	if (rc < 0) {
+		shell_error(sh, "input_report_key press failed: %d", rc);
+		return rc;
+	}
+
+	k_msleep(long_press ? (LONG_PRESS_MS + 100) : 50);
+
+	rc = input_report_key(NULL, code, 0, true, K_FOREVER);
+	if (rc < 0) {
+		shell_error(sh, "input_report_key release failed: %d", rc);
+		return rc;
+	}
+
+	shell_print(sh, "Injected %s on %s",
+		    long_press ? "LONG_PRESS" : "PRESS", argv[1]);
+	return 0;
+}
+
+static int cmd_btn_press(const struct shell *sh, size_t argc, char **argv)
+{
+	return shell_btn(sh, argc, argv, false);
+}
+
+static int cmd_btn_long(const struct shell *sh, size_t argc, char **argv)
+{
+	return shell_btn(sh, argc, argv, true);
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_btn,
+	SHELL_CMD_ARG(press, NULL,
+		      "Short press: btn press <BTN_1..8|ENTER|ESC|HL_LEFT|HL_RIGHT>",
+		      cmd_btn_press, 2, 0),
+	SHELL_CMD_ARG(long,  NULL,
+		      "Long press:  btn long  <BTN_1..8|ENTER|ESC|HL_LEFT|HL_RIGHT>",
+		      cmd_btn_long, 2, 0),
+	SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(btn, &sub_btn,
+		   "Inject button events through the input subsystem", NULL);
 
 /* =========================================================================
  * WiFi / session
@@ -131,19 +287,20 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 	switch (state) {
 	case WIFI_PROV_CONNECTING:
 		LOG_INF("WiFi connecting: %s", info);
-		ui_set_status("Connecting to WiFi...", info);
+		snprintf(msg, sizeof(msg), "WiFi connecting: %s", info);
+		ui_log_push(msg);
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	case WIFI_PROV_CONNECTED:
 		LOG_INF("WiFi connected: %s", info);
-		snprintf(msg, sizeof(msg), "IP: %s", info);
-		ui_set_status("WiFi connected", msg);
+		snprintf(msg, sizeof(msg), "WiFi connected — IP: %s", info);
+		ui_log_push(msg);
 		sys_flag_clear(SYS_FLAG_WIFI_PROVISIONING);
 		sys_flag_set(SYS_FLAG_WIFI_READY);
 		break;
 	case WIFI_PROV_DISCONNECTED:
 		LOG_WRN("WiFi disconnected");
-		ui_set_status("WiFi disconnected", "Reconnecting...");
+		ui_log_push("WiFi disconnected — reconnecting...");
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		/* Tear down the held TLS session — the underlying TCP is dead.
 		 * The next iteration will block on SYS_FLAG_WIFI_READY at the
@@ -151,8 +308,8 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 		atomic_set(&session_reset_requested, 1);
 		break;
 	case WIFI_PROV_AP_ACTIVE:
-		snprintf(msg, sizeof(msg), "Connect to: %s", info);
-		ui_set_status("WiFi Setup — open browser:", msg);
+		snprintf(msg, sizeof(msg), "AP mode — connect to: %s", info);
+		ui_log_push(msg);
 		sys_flag_clear(SYS_FLAG_WIFI_READY);
 		sys_flag_set(SYS_FLAG_WIFI_PROVISIONING);
 		break;
@@ -238,7 +395,7 @@ static void update_access_token(const char *token)
 
 static enum app_state do_register(void)
 {
-	ui_set_status("Connecting to server...", "Registering device...");
+	ui_log_push("Connecting to server — registering device...");
 
 	int rc = session_ensure();
 
@@ -272,19 +429,19 @@ static enum app_state do_register(void)
 		 *   (b) the device be authorized as-is by the admin (we can't
 		 *       use it without the secret, but the record is valid). */
 		LOG_WRN("Already registered (409) — going to pending.");
-		ui_set_status("Already registered", "Waiting for admin");
+		ui_log_push("Already registered — waiting for admin");
 		return STATE_WAITING_AUTHORIZATION;
 	}
 
 	LOG_ERR("Registration failed: %d — retry in 10s", rc);
-	ui_set_status("Server unreachable", "Retrying in 10s...");
+	ui_log_push("Server unreachable — retrying in 10s...");
 	k_msleep(10000);
 	return STATE_REGISTERING;
 }
 
 static enum app_state do_wait_authorization(void)
 {
-	ui_set_status("Waiting for admin", "authorization...");
+	ui_log_push("Waiting for admin authorization...");
 
 	/* If we reached WAITING without ever having a device_secret (most
 	 * likely we came here from a 409 on /register), there is nothing to
@@ -325,12 +482,12 @@ static enum app_state do_wait_authorization(void)
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		LOG_ERR("Device rejected/revoked");
 		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
-		ui_set_status("Device rejected", "Contact admin");
+		ui_log_push("Device rejected — contact admin");
 		return STATE_ERROR;
 	}
 
 	LOG_ERR("Auth check failed (%d) — retry in 10s", rc);
-	ui_set_status("Server unreachable", "Retrying...");
+	ui_log_push("Server unreachable — retrying...");
 	k_msleep(10000);
 	return STATE_WAITING_AUTHORIZATION;
 }
@@ -369,7 +526,7 @@ static enum app_state do_refresh(void)
 
 static enum app_state do_authenticate(void)
 {
-	ui_set_status("Authenticating...", NULL);
+	ui_log_push("Authenticating...");
 
 	if (!device_secret[0]) {
 		LOG_ERR("No device_secret — re-registering");
@@ -412,7 +569,7 @@ static enum app_state do_authenticate(void)
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		session_close_on_net_error(-EACCES);
 		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
-		ui_set_status("Device rejected", "Contact admin");
+		ui_log_push("Device rejected — contact admin");
 		return STATE_ERROR;
 	}
 
@@ -434,7 +591,8 @@ static enum app_state do_send_input(const struct button_event *bev)
 	struct llss_input_response input = {0};
 
 	rc = llss_send_input(access_token, device_id,
-			     bev->name, bev->type, &input);
+			     ui_btn_llss_name(bev->btn),
+			     ui_evt_llss_name(bev->evt), &input);
 	session_close_on_net_error(rc);
 
 	if (rc == -EACCES) {
@@ -500,7 +658,7 @@ static enum app_state do_poll(void)
 
 static enum app_state do_fetch_frame(void)
 {
-	ui_set_status("Fetching frame...", last_frame_id);
+	ui_log_push("Fetching frame...");
 
 	int rc = session_ensure();
 
@@ -508,11 +666,13 @@ static enum app_state do_fetch_frame(void)
 		return STATE_POLLING;
 	}
 
-	uint8_t *png = NULL;
+	/* Fetch straight into a display pipeline buffer — no copy. */
+	size_t cap = 0;
+	uint8_t *dst = display_frame_write_buf(&cap);
 	size_t png_len = 0;
 
 	rc = llss_fetch_frame(access_token, device_id, last_frame_id,
-			      &png, &png_len);
+			      dst, cap, &png_len);
 	session_close_on_net_error(rc);
 
 	if (rc == -EACCES) {
@@ -523,11 +683,11 @@ static enum app_state do_fetch_frame(void)
 		return STATE_POLLING;
 	}
 
-	if (png && png_len > 0) {
-		int drc = queue_display_frame(png, png_len);
+	if (png_len > 0) {
+		int drc = display_frame_submit(png_len);
 
 		if (drc < 0) {
-			LOG_ERR("Queue frame failed: %d", drc);
+			LOG_ERR("Frame submit failed: %d", drc);
 		}
 	}
 
@@ -548,6 +708,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	settings_subsys_init();
 	llss_storage_init();
 	llss_storage_load(device_id, device_secret, refresh_token, access_token);
+	device_ui_settings_ready();
 	LOG_INF("Stored device_id: %s", device_id[0] ? device_id : "(none)");
 
 	/* Hardware ID derived from the link-layer MAC.  The MAC is assigned by
@@ -560,7 +721,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 
 	if (rc) {
 		LOG_ERR("llss_client_init: %d", rc);
-		ui_set_status("LLSS init failed", "Check CA cert");
+		ui_log_push("LLSS init failed — check CA cert");
 		app_state = STATE_ERROR;
 	} else {
 		app_state = device_id[0] ? STATE_REFRESHING : STATE_REGISTERING;
@@ -595,7 +756,9 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 			struct button_event bev;
 
 			if (k_msgq_get(&btn_queue, &bev, K_NO_WAIT) == 0) {
-				LOG_INF("Button: %s %s", bev.name, bev.type);
+				LOG_INF("Button: %s %s",
+					ui_btn_llss_name(bev.btn),
+					ui_evt_llss_name(bev.evt));
 				app_state = do_send_input(&bev); /* -> POLLING | FETCHING_FRAME | REFRESHING */
 				continue;
 			}
@@ -622,7 +785,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 			break;
 		case STATE_SLEEPING:              /* -> POLLING */
 			LOG_INF("Sleeping for %d ms", poll_interval_ms);
-			ui_set_status("Sleeping...", NULL);
+			ui_log_push("Sleeping...");
 			k_msleep(poll_interval_ms);
 			app_state = STATE_POLLING;
 			break;

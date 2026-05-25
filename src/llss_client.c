@@ -17,6 +17,7 @@
 #include <zephyr/net/dns_resolve.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
+#include <zephyr/sys/clock.h>
 
 LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_DBG);
 
@@ -28,12 +29,6 @@ LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_DBG);
 #define LLSS_MAX_HOSTNAME  CONFIG_LLSS_MAX_HOSTNAME
 #define LLSS_MAX_BASE_PATH CONFIG_LLSS_MAX_BASE_PATH
 #define LLSS_MAX_URL_LEN   CONFIG_LLSS_MAX_URL_LEN
-
-/* =========================================================================
- * Frame receive buffer — placed in SPIRAM to avoid exhausting DRAM
- * ========================================================================= */
-static uint8_t frame_recv_buf[CONFIG_LLSS_FRAME_BUF_SIZE]
-	__attribute__((section(".ext_ram_noinit.llss_frame")));
 
 /* General-purpose JSON receive buffer (2 KB — enough for all text responses) */
 #define JSON_BUF_SIZE 2048
@@ -1108,7 +1103,7 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 
 int llss_fetch_frame(const char *access_token, const char *device_id,
 		     const char *frame_id,
-		     uint8_t **buf_out, size_t *len_out)
+		     uint8_t *dst, size_t dst_size, size_t *len_out)
 {
 	char path[LLSS_MAX_URL_LEN];
 	char auth_hdr[LLSS_TOKEN_MAX + 32];
@@ -1117,11 +1112,11 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 		 device_id, frame_id);
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
-	/* Use the SPIRAM frame buffer directly as recv_buf */
+	/* HTTP body lands directly in the caller's buffer (a display pipeline
+	 * slot) — no intermediate copy. */
 	size_t body_len = 0;
 	int http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
-				     frame_recv_buf, sizeof(frame_recv_buf),
-				     &body_len);
+				     dst, dst_size, &body_len);
 
 	if (http_status < 0) {
 		return http_status;
@@ -1141,8 +1136,6 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 		return -ENODATA;
 	}
 
-	/* Return pointer into the static SPIRAM buffer — no copy needed */
-	*buf_out = frame_recv_buf;
 	*len_out = body_len;
 
 	LOG_INF("Frame fetched: %zu bytes", body_len);
@@ -1162,12 +1155,24 @@ int llss_send_input(const char *access_token, const char *device_id,
 	snprintf(path, sizeof(path), "/devices/%s/inputs", device_id);
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
-	/* ISO 8601 timestamp — use epoch 0 if no real-time clock */
+	/* ISO 8601 timestamp from CLOCK_REALTIME.  ntp_sync owns this clock
+	 * and only sets SYS_FLAG_TIME_VALID once tv_sec >= 2024-01-01, so by
+	 * the time we reach STATE_POLLING the clock is believable.  Fall back
+	 * to epoch if the read fails (server accepts both). */
+	char ts[24] = "1970-01-01T00:00:00Z";
+	struct timespec now = {0};
+	struct tm tm_buf;
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &now) == 0 &&
+	    gmtime_r(&now.tv_sec, &tm_buf) != NULL) {
+		strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+	}
+
 	snprintf(body, sizeof(body),
 		 "{\"button\":\"%s\","
 		 "\"event_type\":\"%s\","
-		 "\"timestamp\":\"1970-01-01T00:00:00Z\"}",
-		 button_name, event_type);
+		 "\"timestamp\":\"%s\"}",
+		 button_name, event_type, ts);
 
 	int http_status = do_request(HTTP_POST, path, auth_hdr,
 				     body, "application/json",

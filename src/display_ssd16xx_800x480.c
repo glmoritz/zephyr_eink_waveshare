@@ -9,6 +9,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include "custom_ssd16xx.h"
+
 LOG_MODULE_REGISTER(custom_ssd16xx_800x480, CONFIG_DISPLAY_LOG_LEVEL);
 
 #define CUSTOM_SSD16XX_BUSY_TIMEOUT_MS    2000U
@@ -34,6 +36,7 @@ LOG_MODULE_REGISTER(custom_ssd16xx_800x480, CONFIG_DISPLAY_LOG_LEVEL);
 #define SSD16XX_CMD_RAM_Y_COUNTER         0x4F
 #define SSD16XX_CMD_WRITE_BW_RAM          0x24
 #define SSD16XX_CMD_WRITE_RED_RAM         0x26
+#define SSD16XX_CMD_DISP_UPDATE_CTRL1     0x21
 #define SSD16XX_CMD_DISP_UPDATE_CTRL2     0x22
 #define SSD16XX_CMD_MASTER_ACTIVATION     0x20
 #define SSD16XX_CMD_DEEP_SLEEP            0x10
@@ -63,6 +66,14 @@ static const uint8_t lut_4gray_gc[105] = {
 #define CUSTOM_SSD16XX_ROWS      480U
 #define CUSTOM_SSD16XX_BUF_BYTES (CUSTOM_SSD16XX_COLS * CUSTOM_SSD16XX_ROWS) /* 48000 */
 
+/* Force a full refresh after this many consecutive partial refreshes, to clear
+ * accumulated ghosting. The driver owns this floor; the app may request a full
+ * refresh earlier (e.g. HLSS switch). Tune for the deployed panel/temperature.
+ */
+#ifndef CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL
+#define CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL 20U
+#endif
+
 struct custom_ssd16xx_config {
 	const struct device *mipi_dev;
 	struct mipi_dbi_config dbi_config;
@@ -78,6 +89,18 @@ struct custom_ssd16xx_data {
 	 */
 	uint8_t *bw_plane;
 	uint8_t *red_plane;
+
+	/* Shadow of the last frame driven to the panel, used as the "previous"
+	 * image the controller diffs against during a 1bpp partial refresh.
+	 */
+	uint8_t *prev_bw_plane;
+	bool prev_valid;
+	enum custom_ssd16xx_color_mode color_mode;
+	uint32_t partial_count;
+
+	/* Ordered dithering during L8->2bpp conversion (see header). Off for
+	 * pre-dithered server frames, on for device-local UI. */
+	bool dither;
 };
 
 static int custom_ssd16xx_busy_wait(const struct device *dev, uint32_t timeout_ms)
@@ -236,16 +259,14 @@ static int custom_ssd16xx_blanking_on(const struct device *dev)
 	return 0;
 }
 
-/* Flush both planes to panel and trigger a full 4-gray refresh */
-static int custom_ssd16xx_blanking_off(const struct device *dev)
+/* Reset the RAM address pointers to the top-left origin before a plane write.
+ * X resets to 0; Y resets to height-1 (Y decrements from top to bottom).
+ */
+static int custom_ssd16xx_reset_ram_ptr(const struct device *dev)
 {
-	struct custom_ssd16xx_data *data = dev->data;
 	uint8_t tmp[2];
 	int err;
 
-	data->blanking_on = false;
-
-	/* Reset RAM X pointer to 0 */
 	tmp[0] = 0;
 	tmp[1] = 0;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_X_COUNTER, tmp, 2);
@@ -253,10 +274,29 @@ static int custom_ssd16xx_blanking_off(const struct device *dev)
 		return err;
 	}
 
-	/* Reset RAM Y pointer to height-1 (Y decrements from top to bottom) */
 	tmp[0] = (CUSTOM_SSD16XX_ROWS - 1) & 0xFF;
 	tmp[1] = ((CUSTOM_SSD16XX_ROWS - 1) >> 8) & 0x01;
-	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_RAM_Y_COUNTER, tmp, 2);
+	return custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_Y_COUNTER, tmp, 2);
+}
+
+/* Mark the framebuffer as the new "previous" frame after a successful refresh. */
+static void custom_ssd16xx_mark_synced(struct custom_ssd16xx_data *data)
+{
+	memcpy(data->prev_bw_plane, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+	data->prev_valid = true;
+	data->partial_count = 0;
+}
+
+/* Flush both planes to panel and trigger a full 4-gray refresh. Renders both
+ * mono and 2-gray content correctly (mono frames have BW == RED mirrored).
+ */
+static int custom_ssd16xx_do_full(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[2];
+	int err;
+
+	err = custom_ssd16xx_reset_ram_ptr(dev);
 	if (err < 0) {
 		return err;
 	}
@@ -268,16 +308,7 @@ static int custom_ssd16xx_blanking_off(const struct device *dev)
 		return err;
 	}
 
-	/* Reset RAM pointer for RED plane write */
-	tmp[0] = 0;
-	tmp[1] = 0;
-	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_X_COUNTER, tmp, 2);
-	if (err < 0) {
-		return err;
-	}
-	tmp[0] = (CUSTOM_SSD16XX_ROWS - 1) & 0xFF;
-	tmp[1] = ((CUSTOM_SSD16XX_ROWS - 1) >> 8) & 0x01;
-	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_RAM_Y_COUNTER, tmp, 2);
+	err = custom_ssd16xx_reset_ram_ptr(dev);
 	if (err < 0) {
 		return err;
 	}
@@ -316,18 +347,183 @@ static int custom_ssd16xx_blanking_off(const struct device *dev)
 		return err;
 	}
 	LOG_DBG("EPD refresh complete");
+
+	custom_ssd16xx_mark_synced(data);
 	return 0;
+}
+
+/*
+ * 1bpp differential partial refresh using the OTP partial waveform.
+ * The controller diffs the new frame (BW RAM) against the previous frame
+ * (RED RAM) and only drives changed pixels (~600ms vs ~2s full).
+ */
+static int custom_ssd16xx_do_partial(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[2];
+	int err;
+
+	/* Previous frame -> RED RAM (the image the controller diffs against) */
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->prev_bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+
+	/* New frame -> BW RAM */
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_BW_RAM, data->bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Display Update Control 2: 0xFC = OTP partial waveform. (Option B if
+	 * ghosting is bad: load lut_1Gray_A2 via 0x32 and use 0xC7 here instead.)
+	 */
+	tmp[0] = 0xFC;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0x00;
+	tmp[1] = 0x00;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL1, tmp, 2);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Partial border waveform */
+	tmp[0] = 0x80;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
+	if (err < 0) {
+		return err;
+	}
+
+	LOG_DBG("Waiting for EPD partial refresh...");
+	err = custom_ssd16xx_busy_wait(dev, CUSTOM_SSD16XX_REFRESH_TIMEOUT_MS);
+	if (err < 0) {
+		LOG_ERR("EPD partial refresh timed out");
+		return err;
+	}
+
+	/* Re-sync: write the new frame into RED RAM too, so the controller's
+	 * internal "previous" matches reality for the next partial. Most
+	 * implementations miss this and accumulate diffing errors.
+	 */
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+
+	memcpy(data->prev_bw_plane, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+	data->partial_count++;
+	LOG_DBG("EPD partial refresh complete (%u since full)", data->partial_count);
+	return 0;
+}
+
+/* Flush both planes to panel and trigger a full 4-gray refresh */
+static int custom_ssd16xx_blanking_off(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	data->blanking_on = false;
+	return custom_ssd16xx_do_full(dev);
+}
+
+int custom_ssd16xx_refresh_full(const struct device *dev)
+{
+	return custom_ssd16xx_do_full(dev);
+}
+
+int custom_ssd16xx_refresh_partial(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	/* Gray and partial are mutually exclusive on this panel; no previous
+	 * frame means nothing to diff against; the periodic floor clears
+	 * ghosting. Any of these falls back to a full refresh.
+	 */
+	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
+	    data->partial_count >= CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL) {
+		return custom_ssd16xx_do_full(dev);
+	}
+
+	return custom_ssd16xx_do_partial(dev);
+}
+
+int custom_ssd16xx_set_color_mode(const struct device *dev,
+				  enum custom_ssd16xx_color_mode mode)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	if (mode != data->color_mode) {
+		/* A mode transition resets the panel waveform state: force the
+		 * next refresh to be full by invalidating the previous frame.
+		 */
+		data->color_mode = mode;
+		data->prev_valid = false;
+	}
+	return 0;
+}
+
+/* 4x4 ordered (Bayer) dither matrix, values 0..15. Indexed by absolute screen
+ * coordinates so the pattern is stable across LVGL's chunked region writes. */
+static const uint8_t bayer4[4][4] = {
+	{  0,  8,  2, 10 },
+	{ 12,  4, 14,  6 },
+	{  3, 11,  1,  9 },
+	{ 15,  7, 13,  5 },
+};
+
+/*
+ * Quantise one 8-bit luma to a 2bpp gray level (0=black .. 3=white).
+ *
+ * Plain mode: nearest band (luma >> 6) — palette-aligned for pre-dithered
+ * server frames (0/85/170/255 land exactly on levels 0/1/2/3).
+ *
+ * Dither mode: ordered dithering across the 4 levels using the Bayer matrix,
+ * so arbitrary UI grays render as a mix of adjacent levels instead of banding.
+ */
+static inline uint8_t quantise_2bpp(uint8_t luma, bool dither,
+				    uint16_t px, uint16_t py)
+{
+	if (!dither) {
+		return luma >> 6;
+	}
+
+	int scaled = (int)luma * 3;          /* 0..765 = level*255 */
+	int base   = scaled / 255;           /* lower level 0..3 */
+	int frac   = scaled - base * 255;    /* 0..254 toward next level */
+	int thr    = bayer4[py & 3][px & 3] * 255 / 16; /* 0..239 */
+	int level  = base + (frac > thr ? 1 : 0);
+
+	return (uint8_t)(level > 3 ? 3 : level);
 }
 
 /*
  * Convert an L_8 (8-bit grayscale) region into the 2-plane framebuffer.
  *
- * Quantisation:
- *   L=0..63   (black)      -> BW bit=0, RED bit=0
- *   L=64..127 (dark gray)  -> BW bit=0, RED bit=1
- *   L=128..191 (light gray)-> BW bit=1, RED bit=0
- *   L=192..255 (white)     -> BW bit=1, RED bit=1
- *
+ * 2bpp level packing: BW bit = level&1, RED bit = (level>>1)&1, giving
+ *   0 black, 1 dark gray, 2 light gray, 3 white.
  * Bit packing: MSB = leftmost pixel (bit 7 = column 0 within a byte).
  */
 static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
@@ -337,14 +533,16 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 {
 	struct custom_ssd16xx_data *data = dev->data;
 	const uint8_t *src = buf;
+	bool dither = data->dither;
 
 	for (uint16_t row = 0; row < desc->height; row++) {
 		for (uint16_t col = 0; col < desc->width; col++) {
 			uint8_t luma = src[(size_t)row * desc->pitch + col];
-			uint8_t g2 = luma >> 6; /* 0-3 */
-			uint16_t byte_idx =
-				(y + row) * CUSTOM_SSD16XX_COLS + (x + col) / 8u;
-			uint8_t bit_pos = 7u - ((x + col) % 8u);
+			uint16_t px = x + col;
+			uint16_t py = y + row;
+			uint8_t g2 = quantise_2bpp(luma, dither, px, py);
+			uint16_t byte_idx = py * CUSTOM_SSD16XX_COLS + px / 8u;
+			uint8_t bit_pos = 7u - (px % 8u);
 
 			if (g2 & 0x01u) {
 				data->bw_plane[byte_idx] |= BIT(bit_pos);
@@ -358,6 +556,14 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 			}
 		}
 	}
+	return 0;
+}
+
+int custom_ssd16xx_set_dither(const struct device *dev, bool enable)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	data->dither = enable;
 	return 0;
 }
 
@@ -417,6 +623,8 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 		__attribute__((section(".ext_ram.bss"))); \
 	static uint8_t custom_ssd16xx_red_##inst[CUSTOM_SSD16XX_BUF_BYTES] \
 		__attribute__((section(".ext_ram.bss"))); \
+	static uint8_t custom_ssd16xx_prev_bw_##inst[CUSTOM_SSD16XX_BUF_BYTES] \
+		__attribute__((section(".ext_ram.bss"))); \
 	static const struct custom_ssd16xx_config custom_ssd16xx_cfg_##inst = { \
 		.mipi_dev = DEVICE_DT_GET(DT_PARENT(DT_DRV_INST(inst))), \
 		.dbi_config = { \
@@ -431,6 +639,10 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 	static struct custom_ssd16xx_data custom_ssd16xx_data_##inst = { \
 		.bw_plane  = custom_ssd16xx_bw_##inst, \
 		.red_plane = custom_ssd16xx_red_##inst, \
+		.prev_bw_plane = custom_ssd16xx_prev_bw_##inst, \
+		.prev_valid = false, \
+		.color_mode = CUSTOM_SSD16XX_MONO, \
+		.partial_count = 0, \
 	}; \
 	DEVICE_DT_INST_DEFINE(inst, custom_ssd16xx_init, NULL, \
 		&custom_ssd16xx_data_##inst, &custom_ssd16xx_cfg_##inst, \
