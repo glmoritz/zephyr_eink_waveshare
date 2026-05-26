@@ -843,10 +843,13 @@ int llss_register(const char *hardware_id,
 		 "{\"hardware_id\":\"%s\","
 		 "\"firmware_version\":\"%s\","
 		 "\"display\":{\"width\":800,\"height\":480,"
-		 "\"bit_depth\":%d,\"partial_refresh\":false}}",
+		 "\"bit_depth\":%d,\"partial_refresh\":false,"
+		 "\"top_strip_height\":%d,\"bottom_strip_height\":%d}}",
 		 hardware_id,
 		 CONFIG_LLSS_FIRMWARE_VERSION,
-		 CONFIG_LLSS_DISPLAY_BIT_DEPTH);
+		 CONFIG_LLSS_DISPLAY_BIT_DEPTH,
+		 CONFIG_LLSS_TOP_STRIP_HEIGHT,
+		 CONFIG_LLSS_BOTTOM_STRIP_HEIGHT);
 
 	int http_status = do_request(HTTP_POST, "/auth/devices/register",
 				     NULL, body, "application/json",
@@ -896,10 +899,13 @@ int llss_authenticate(const char *hardware_id, const char *device_secret,
 		 "\"device_secret\":\"%s\","
 		 "\"firmware_version\":\"%s\","
 		 "\"display\":{\"width\":800,\"height\":480,"
-		 "\"bit_depth\":%d,\"partial_refresh\":false}}",
+		 "\"bit_depth\":%d,\"partial_refresh\":false,"
+		 "\"top_strip_height\":%d,\"bottom_strip_height\":%d}}",
 		 hardware_id, device_secret,
 		 CONFIG_LLSS_FIRMWARE_VERSION,
-		 CONFIG_LLSS_DISPLAY_BIT_DEPTH);
+		 CONFIG_LLSS_DISPLAY_BIT_DEPTH,
+		 CONFIG_LLSS_TOP_STRIP_HEIGHT,
+		 CONFIG_LLSS_BOTTOM_STRIP_HEIGHT);
 
 	int http_status = do_request(HTTP_POST, "/auth/devices/token",
 				     NULL, body, "application/json",
@@ -1139,6 +1145,52 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 	*len_out = body_len;
 
 	LOG_INF("Frame fetched: %zu bytes", body_len);
+	return 0;
+}
+
+/* ----- Fetch pressed strip (protocol extension) -------------------------- */
+
+int llss_fetch_pressed_strip(const char *access_token, const char *device_id,
+			     const char *frame_id, enum llss_strip strip,
+			     uint8_t *dst, size_t dst_size, size_t *len_out)
+{
+	char path[LLSS_MAX_URL_LEN];
+	char auth_hdr[LLSS_TOKEN_MAX + 32];
+	const char *which = (strip == LLSS_STRIP_TOP_PRESSED)
+				    ? "top_pressed" : "bottom_pressed";
+
+	snprintf(path, sizeof(path), "/devices/%s/frames/%s?strip=%s",
+		 device_id, frame_id, which);
+	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
+
+	size_t body_len = 0;
+	int http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
+				     dst, dst_size, &body_len);
+
+	if (http_status < 0) {
+		return http_status;
+	}
+
+	if (http_status == 401 || http_status == 403) {
+		return -EACCES;
+	}
+
+	/* No pressed strip for this frame/server — expected, not an error.
+	 * Caller falls back to local feedback (or none). */
+	if (http_status == 404) {
+		return -ENOENT;
+	}
+
+	if (http_status != 200) {
+		LOG_ERR("fetch pressed strip HTTP %d", http_status);
+		return http_status;
+	}
+
+	if (body_len == 0) {
+		return -ENODATA;
+	}
+
+	*len_out = body_len;
 	return 0;
 }
 

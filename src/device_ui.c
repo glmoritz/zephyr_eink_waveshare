@@ -100,8 +100,338 @@ static lv_obj_t *net_ip_lbl;
 /* Clock screen */
 static lv_obj_t *clk_scr;
 static lv_obj_t *clk_date_lbl;
-static lv_obj_t *clk_time_lbl;
+static lv_obj_t *clk_time_obj;
 static lv_obj_t *clk_alarm_lbl;
+
+/* =========================================================================
+ * Seven-segment clock drawing
+ * ========================================================================= */
+
+typedef enum {
+	SEG_HORIZONTAL = 0,
+	SEG_VERTICAL,
+} seg_orientation_t;
+
+typedef enum {
+	SEG_END_POINT = 0,
+	SEG_END_DIAG_FWD,
+	SEG_END_DIAG_BACK,
+} seg_end_t;
+
+typedef struct {
+	lv_color_t color;
+	lv_opa_t opa;
+	int32_t thickness;
+	int32_t tip;
+	int32_t outline_width;
+	seg_end_t start_end;
+	seg_end_t end_end;
+} seg_style_t;
+
+typedef struct {
+	char text[5];
+	seg_style_t on_style;
+	seg_style_t off_style;
+	int32_t digit_w;
+	int32_t digit_h;
+	int32_t digit_gap;
+	int32_t colon_gap;
+	int32_t margin_x;
+	int32_t margin_y;
+} sevenseg_clock_t;
+
+static sevenseg_clock_t clk_time_state = {
+	.text = "----",
+	.on_style = {
+		.color = LV_COLOR_MAKE(0x00, 0x00, 0x00),
+		.opa = LV_OPA_COVER,
+		.thickness = 22,
+		.tip = 18,
+		.outline_width = 1,
+		.start_end = SEG_END_POINT,
+		.end_end = SEG_END_POINT,
+	},
+	.off_style = {
+		.color = LV_COLOR_MAKE(0xCC, 0xCC, 0xCC),
+		.opa = LV_OPA_40,
+		.thickness = 22,
+		.tip = 18,
+		.outline_width = 0,
+		.start_end = SEG_END_POINT,
+		.end_end = SEG_END_POINT,
+	},
+	.digit_w = 108,
+	.digit_h = 192,
+	.digit_gap = 18,
+	.colon_gap = 36,
+	.margin_x = 12,
+	.margin_y = 10,
+};
+
+static int32_t clampi32(int32_t v, int32_t min_v, int32_t max_v)
+{
+	if (v < min_v) {
+		return min_v;
+	}
+	if (v > max_v) {
+		return max_v;
+	}
+	return v;
+}
+
+static void draw_triangle_fill(lv_layer_t *layer,
+				      const lv_point_precise_t *a,
+				      const lv_point_precise_t *b,
+				      const lv_point_precise_t *c,
+				      const seg_style_t *style)
+{
+	lv_draw_triangle_dsc_t dsc;
+
+	lv_draw_triangle_dsc_init(&dsc);
+	dsc.color = style->color;
+	dsc.opa = style->opa;
+	dsc.p[0] = *a;
+	dsc.p[1] = *b;
+	dsc.p[2] = *c;
+	lv_draw_triangle(layer, &dsc);
+}
+
+static void draw_segment_polygon(lv_layer_t *layer,
+				 const lv_point_precise_t *pts,
+				 uint32_t count,
+				 const seg_style_t *style)
+{
+	lv_point_precise_t center = {0};
+
+	for (uint32_t i = 0; i < count; i++) {
+		center.x += pts[i].x;
+		center.y += pts[i].y;
+	}
+
+	center.x /= (int32_t)count;
+	center.y /= (int32_t)count;
+
+	for (uint32_t i = 0; i < count; i++) {
+		const lv_point_precise_t *a = &pts[i];
+		const lv_point_precise_t *b = &pts[(i + 1U) % count];
+
+		draw_triangle_fill(layer, &center, a, b, style);
+	}
+}
+
+static void draw_7seg_segment(lv_layer_t *layer,
+			      int32_t x, int32_t y,
+			      int32_t w, int32_t h,
+			      seg_orientation_t orient,
+			      const seg_style_t *style)
+{
+	lv_point_precise_t pts[6];
+	int32_t tip = style->tip;
+
+	if (!layer || !style || w <= 0 || h <= 0) {
+		return;
+	}
+
+	if (orient == SEG_HORIZONTAL) {
+		tip = clampi32(tip, 1, w / 2);
+
+		pts[0].x = x + ((style->start_end == SEG_END_POINT) ? tip : 0);
+		pts[0].y = y;
+		pts[1].x = x + w - ((style->end_end == SEG_END_POINT) ? tip : 0);
+		pts[1].y = y;
+		pts[2].x = x + w;
+		pts[2].y = y + h / 2;
+		pts[3].x = x + w - ((style->end_end == SEG_END_POINT) ? tip : 0);
+		pts[3].y = y + h;
+		pts[4].x = x + ((style->start_end == SEG_END_POINT) ? tip : 0);
+		pts[4].y = y + h;
+		pts[5].x = x;
+		pts[5].y = y + h / 2;
+
+		if (style->start_end == SEG_END_DIAG_FWD) {
+			pts[0].x = x + tip;
+			pts[4].x = x;
+		} else if (style->start_end == SEG_END_DIAG_BACK) {
+			pts[0].x = x;
+			pts[4].x = x + tip;
+		}
+
+		if (style->end_end == SEG_END_DIAG_FWD) {
+			pts[1].x = x + w - tip;
+			pts[3].x = x + w;
+		} else if (style->end_end == SEG_END_DIAG_BACK) {
+			pts[1].x = x + w;
+			pts[3].x = x + w - tip;
+		}
+	} else {
+		tip = clampi32(tip, 1, h / 2);
+
+		pts[0].x = x + w / 2;
+		pts[0].y = y;
+		pts[1].x = x + w;
+		pts[1].y = y + ((style->start_end == SEG_END_POINT) ? tip : 0);
+		pts[2].x = x + w;
+		pts[2].y = y + h - ((style->end_end == SEG_END_POINT) ? tip : 0);
+		pts[3].x = x + w / 2;
+		pts[3].y = y + h;
+		pts[4].x = x;
+		pts[4].y = y + h - ((style->end_end == SEG_END_POINT) ? tip : 0);
+		pts[5].x = x;
+		pts[5].y = y + ((style->start_end == SEG_END_POINT) ? tip : 0);
+
+		if (style->start_end == SEG_END_DIAG_FWD) {
+			pts[1].y = y + tip;
+			pts[5].y = y;
+		} else if (style->start_end == SEG_END_DIAG_BACK) {
+			pts[1].y = y;
+			pts[5].y = y + tip;
+		}
+
+		if (style->end_end == SEG_END_DIAG_FWD) {
+			pts[2].y = y + h - tip;
+			pts[4].y = y + h;
+		} else if (style->end_end == SEG_END_DIAG_BACK) {
+			pts[2].y = y + h;
+			pts[4].y = y + h - tip;
+		}
+	}
+
+	draw_segment_polygon(layer, pts, ARRAY_SIZE(pts), style);
+}
+
+static bool digit_segment_on(char digit, uint8_t seg)
+{
+	static const uint8_t map[10] = {
+		0x3F, /* 0: A B C D E F */
+		0x06, /* 1: B C */
+		0x5B, /* 2: A B D E G */
+		0x4F, /* 3: A B C D G */
+		0x66, /* 4: B C F G */
+		0x6D, /* 5: A C D F G */
+		0x7D, /* 6: A C D E F G */
+		0x07, /* 7: A B C */
+		0x7F, /* 8: A B C D E F G */
+		0x6F, /* 9: A B C D F G */
+	};
+
+	if (digit < '0' || digit > '9') {
+		return false;
+	}
+
+	return (map[digit - '0'] & BIT(seg)) != 0U;
+}
+
+static void draw_7seg_digit(lv_layer_t *layer,
+			    int32_t x, int32_t y,
+			    int32_t w, int32_t h,
+			    char digit,
+			    const seg_style_t *on_style,
+			    const seg_style_t *off_style)
+{
+	const int32_t seg_t = on_style->thickness;
+	const int32_t half_t = seg_t / 2;
+	const int32_t h_pad = seg_t;
+	const int32_t left_x = x;
+	const int32_t right_x = x + w - seg_t;
+	const int32_t top_y = y;
+	const int32_t mid_y = y + h / 2 - half_t;
+	const int32_t bot_y = y + h - seg_t;
+	const int32_t upper_y = y + seg_t / 2;
+	const int32_t lower_y = y + h / 2 + seg_t / 2;
+	const int32_t vert_h = h / 2 - seg_t;
+	const int32_t horiz_w = w - (2 * h_pad);
+	const seg_style_t *seg_style;
+
+	seg_style = digit_segment_on(digit, 0) ? on_style : off_style;
+	draw_7seg_segment(layer, x + h_pad, top_y, horiz_w, seg_t,
+			  SEG_HORIZONTAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 1) ? on_style : off_style;
+	draw_7seg_segment(layer, right_x, upper_y, seg_t, vert_h,
+			  SEG_VERTICAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 2) ? on_style : off_style;
+	draw_7seg_segment(layer, right_x, lower_y, seg_t, vert_h,
+			  SEG_VERTICAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 3) ? on_style : off_style;
+	draw_7seg_segment(layer, x + h_pad, bot_y, horiz_w, seg_t,
+			  SEG_HORIZONTAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 4) ? on_style : off_style;
+	draw_7seg_segment(layer, left_x, lower_y, seg_t, vert_h,
+			  SEG_VERTICAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 5) ? on_style : off_style;
+	draw_7seg_segment(layer, left_x, upper_y, seg_t, vert_h,
+			  SEG_VERTICAL, seg_style);
+
+	seg_style = digit_segment_on(digit, 6) ? on_style : off_style;
+	draw_7seg_segment(layer, x + h_pad, mid_y, horiz_w, seg_t,
+			  SEG_HORIZONTAL, seg_style);
+}
+
+static void draw_7seg_colon(lv_layer_t *layer, int32_t x, int32_t y,
+			    int32_t h, const seg_style_t *style)
+{
+	lv_draw_rect_dsc_t dsc;
+	lv_area_t area;
+	int32_t dot = style->thickness;
+	int32_t top = y + h / 3 - dot / 2;
+	int32_t bot = y + (2 * h) / 3 - dot / 2;
+
+	lv_draw_rect_dsc_init(&dsc);
+	dsc.bg_color = style->color;
+	dsc.bg_opa = style->opa;
+	dsc.radius = LV_RADIUS_CIRCLE;
+	dsc.border_width = style->outline_width;
+	dsc.border_color = style->color;
+	dsc.border_opa = style->opa;
+
+	lv_area_set(&area, x, top, x + dot - 1, top + dot - 1);
+	lv_draw_rect(layer, &dsc, &area);
+	lv_area_set(&area, x, bot, x + dot - 1, bot + dot - 1);
+	lv_draw_rect(layer, &dsc, &area);
+}
+
+static void draw_7seg_time(lv_layer_t *layer, const lv_area_t *coords,
+			   const sevenseg_clock_t *clock)
+{
+	int32_t x = coords->x1 + clock->margin_x;
+	int32_t y = coords->y1 + clock->margin_y;
+	int32_t colon_x;
+
+	draw_7seg_digit(layer, x, y, clock->digit_w, clock->digit_h,
+			clock->text[0], &clock->on_style, &clock->off_style);
+	x += clock->digit_w + clock->digit_gap;
+	draw_7seg_digit(layer, x, y, clock->digit_w, clock->digit_h,
+			clock->text[1], &clock->on_style, &clock->off_style);
+	x += clock->digit_w + clock->digit_gap;
+
+	colon_x = x + (clock->colon_gap - clock->on_style.thickness) / 2;
+	draw_7seg_colon(layer, colon_x, y, clock->digit_h, &clock->on_style);
+	x += clock->colon_gap;
+
+	draw_7seg_digit(layer, x, y, clock->digit_w, clock->digit_h,
+			clock->text[2], &clock->on_style, &clock->off_style);
+	x += clock->digit_w + clock->digit_gap;
+	draw_7seg_digit(layer, x, y, clock->digit_w, clock->digit_h,
+			clock->text[3], &clock->on_style, &clock->off_style);
+}
+
+static void clk_time_draw_event_cb(lv_event_t *e)
+{
+	lv_obj_t *obj = lv_event_get_target_obj(e);
+	lv_layer_t *layer = lv_event_get_layer(e);
+	lv_area_t coords;
+
+	if (lv_event_get_code(e) != LV_EVENT_DRAW_MAIN || !layer) {
+		return;
+	}
+
+	lv_obj_get_coords(obj, &coords);
+	draw_7seg_time(layer, &coords, &clk_time_state);
+}
 
 /* =========================================================================
  * Wake signal
@@ -301,8 +631,11 @@ static void render_clk_locked(void)
 	k_mutex_unlock(&ui_state_mutex);
 
 	lv_label_set_text(clk_date_lbl,  date_buf);
-	lv_label_set_text(clk_time_lbl,  time_buf);
 	lv_label_set_text(clk_alarm_lbl, alarm_buf);
+	memcpy(clk_time_state.text, time_buf, 2);
+	memcpy(clk_time_state.text + 2, time_buf + 3, 2);
+	clk_time_state.text[4] = '\0';
+	lv_obj_invalidate(clk_time_obj);
 	lv_screen_load(clk_scr);
 }
 
@@ -623,32 +956,28 @@ static void build_net_scr(void)
 
 static void build_clk_scr(void)
 {
-	static const char *const keys[8] = {
-		"Hour +", "Hour -", "Min +", "Min -",
-		"Alarm On/Off", "TZ +", "TZ -", 0
-	};
-
 	clk_scr = new_screen();
 	build_header(clk_scr, "Clock");
-	build_softkeys(clk_scr, keys);
 
 	clk_date_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_date_lbl, c_gray(0x66), 0);
 	lv_obj_set_style_text_font(clk_date_lbl, &lv_font_montserrat_28, 0);
 	lv_label_set_text(clk_date_lbl, "—");
-	lv_obj_align(clk_date_lbl, LV_ALIGN_TOP_MID, 0, CONTENT_Y + 24);
+	lv_obj_align(clk_date_lbl, LV_ALIGN_TOP_MID, 0, CONTENT_Y + 16);
 
-	clk_time_lbl = lv_label_create(clk_scr);
-	lv_obj_set_style_text_color(clk_time_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_time_lbl, &lv_font_montserrat_48, 0);
-	lv_label_set_text(clk_time_lbl, "--:--");
-	lv_obj_align(clk_time_lbl, LV_ALIGN_CENTER, 0, -8);
+	clk_time_obj = panel(clk_scr, 564, 212);
+	lv_obj_set_style_bg_opa(clk_time_obj, LV_OPA_TRANSP, 0);
+	lv_obj_set_style_border_width(clk_time_obj, 0, 0);
+	lv_obj_set_style_pad_all(clk_time_obj, 0, 0);
+	lv_obj_align(clk_time_obj, LV_ALIGN_CENTER, 0, -6);
+	lv_obj_add_event_cb(clk_time_obj, clk_time_draw_event_cb,
+			    LV_EVENT_DRAW_MAIN, NULL);
 
 	clk_alarm_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_alarm_lbl, c_ink(), 0);
 	lv_obj_set_style_text_font(clk_alarm_lbl, &lv_font_montserrat_28, 0);
 	lv_label_set_text(clk_alarm_lbl, "Alarm  --:--   off");
-	lv_obj_align(clk_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -FTR_H - 24);
+	lv_obj_align(clk_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -28);
 }
 
 /* =========================================================================
