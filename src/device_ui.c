@@ -1,5 +1,5 @@
 /*
- * Device-local UI — boot log console, network status, clock/alarm.
+ * Device-local UI — boot log console, network status, clock, and alarm.
  *
  * Three LVGL screen objects (log, network, clock) are created at init and
  * swapped in/out with lv_screen_load().  A dedicated low-priority thread
@@ -10,7 +10,8 @@
  *   Device screens → HL_LEFT/RIGHT cycles screens; ESC exits; screen-specific
  *                    BTN_* are direct context actions (no cursor navigation)
  *
- * Screen cycle: LOG ←HL_LEFT/RIGHT→ NETWORK ←HL_LEFT/RIGHT→ CLOCK → (wrap)
+ * Screen cycle: LOG ←HL_LEFT/RIGHT→ NETWORK ←HL_LEFT/RIGHT→ CLOCK
+ *               ←HL_LEFT/RIGHT→ ALARM → (wrap)
  */
 
 #include <stdio.h>
@@ -24,6 +25,8 @@
 #include <zephyr/sys/clock.h>
 
 #include <lvgl.h>
+
+LV_FONT_DECLARE(dseg_bold_italic_200);
 
 #include "device_ui.h"
 #include "display_thread.h"
@@ -64,6 +67,7 @@ static char log_text_buf[LOG_TEXT_MAX + 1];
 static int  alarm_hour;
 static int  alarm_min;
 static bool alarm_enabled;
+static bool clock_24h = true;
 static int  tz_offset;        /* display time = UTC + tz_offset hours */
 static bool alarm_fired;      /* latched within the trigger minute */
 static bool settings_ready;
@@ -78,9 +82,10 @@ enum dev_screen {
 	SCR_LOG,
 	SCR_NETWORK,
 	SCR_CLOCK,
+	SCR_ALARM,
 };
 
-static atomic_t active_scr = ATOMIC_INIT(SCR_LOG);
+static atomic_t active_scr = ATOMIC_INIT(SCR_CLOCK);
 
 /* =========================================================================
  * LVGL objects
@@ -100,8 +105,19 @@ static lv_obj_t *net_ip_lbl;
 /* Clock screen */
 static lv_obj_t *clk_scr;
 static lv_obj_t *clk_date_lbl;
+static lv_obj_t *clk_time_bg_lbl;
 static lv_obj_t *clk_time_lbl;
-static lv_obj_t *clk_alarm_lbl;
+static lv_obj_t *clk_status_lbl;
+static lv_obj_t *clk_power_lbl;
+
+/* Alarm screen */
+static lv_obj_t *alm_scr;
+static lv_obj_t *alm_date_lbl;
+static lv_obj_t *alm_time_lbl;
+static lv_obj_t *alm_meta_lbl;
+static lv_obj_t *alm_alarm_lbl;
+
+#define CLK_GHOST_TEXT "88:88"
 
 /* =========================================================================
  * Wake signal
@@ -134,6 +150,8 @@ static int alarm_settings_set(const char *key, size_t len,
 		alarm_min = val;
 	} else if (!strcmp(key, "enabled")) {
 		alarm_enabled = (val != 0);
+	} else if (!strcmp(key, "clock_24h")) {
+		clock_24h = (val != 0);
 	} else if (!strcmp(key, "tz")) {
 		tz_offset = val;
 	}
@@ -154,6 +172,7 @@ static void save_alarm_locked(void)
 	v = alarm_hour;    settings_save_one("alarm/hour",    &v, sizeof(v));
 	v = alarm_min;     settings_save_one("alarm/min",     &v, sizeof(v));
 	v = alarm_enabled; settings_save_one("alarm/enabled", &v, sizeof(v));
+	v = clock_24h;     settings_save_one("alarm/clock_24h", &v, sizeof(v));
 	v = tz_offset;     settings_save_one("alarm/tz",      &v, sizeof(v));
 }
 
@@ -246,7 +265,7 @@ static void render_log_locked(void)
 	}
 
 	lv_label_set_text(log_content, n ? log_text_buf : "(no messages)");
-	lv_screen_load(log_scr);
+	lv_screen_load(clk_scr);
 }
 
 static void render_net_locked(void)
@@ -269,11 +288,70 @@ static const char *const month_name[12] = {
 	"July", "August", "September", "October", "November", "December",
 };
 
+static void format_hhmm(int hour24, int min, bool use_24h,
+			char *time_buf, size_t time_len,
+			char *suffix_buf, size_t suffix_len)
+{
+	if (use_24h) {
+		snprintf(time_buf, time_len, "%02d:%02d", hour24, min);
+		suffix_buf[0] = '\0';
+		return;
+	}
+
+	int hour12 = hour24 % 12;
+
+	if (hour12 == 0) {
+		hour12 = 12;
+	}
+
+	snprintf(time_buf, time_len, "%02d:%02d", hour12, min);
+	strncpy(suffix_buf, (hour24 < 12) ? "AM" : "PM", suffix_len - 1);
+	suffix_buf[suffix_len - 1] = '\0';
+}
+
+static void format_tz_label(char *buf, size_t len)
+{
+	snprintf(buf, len, "UTC%+d", tz_offset);
+}
+
+static void format_alarm_line(char *buf, size_t len)
+{
+	char time_buf[8];
+	char suffix[4];
+
+	format_hhmm(alarm_hour, alarm_min, clock_24h,
+		    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
+	snprintf(buf, len, "Alarm %s%s%s  %s",
+		 time_buf,
+		 suffix[0] ? " " : "",
+		 suffix,
+		 alarm_enabled ? "ON" : "OFF");
+}
+
+static void update_clock_status_locked(void)
+{
+	uint32_t flags = sys_flag_get();
+	char status_buf[24] = "";
+
+	if (flags & SYS_FLAG_WIFI_READY) {
+		strncpy(status_buf, LV_SYMBOL_WIFI, sizeof(status_buf) - 1);
+		status_buf[sizeof(status_buf) - 1] = '\0';
+		if (flags & SYS_FLAG_LLSS_AUTHORIZED) {
+			strncat(status_buf, " ", sizeof(status_buf) - strlen(status_buf) - 1);
+			strncat(status_buf, LV_SYMBOL_OK,
+				sizeof(status_buf) - strlen(status_buf) - 1);
+		}
+	}
+
+	lv_label_set_text(clk_status_lbl, status_buf);
+	lv_label_set_text(clk_power_lbl, "");
+}
+
 static void render_clk_locked(void)
 {
 	char time_buf[8];
 	char date_buf[48];
-	char alarm_buf[48];
+	char suffix[4];
 
 	struct timespec ts = {0};
 	struct tm tm      = {0};
@@ -284,26 +362,63 @@ static void render_clk_locked(void)
 		time_t local = ts.tv_sec + (time_t)(tz_offset * 3600);
 
 		gmtime_r(&local, &tm);
-		/* HH:MM only — per-minute cadence is right for e-paper */
-		snprintf(time_buf, sizeof(time_buf), "%02d:%02d",
-			 tm.tm_hour, tm.tm_min);
-		snprintf(date_buf, sizeof(date_buf), "%s, %d %s %d",
+		format_hhmm(tm.tm_hour, tm.tm_min, clock_24h,
+			    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
+		snprintf(date_buf, sizeof(date_buf), "%s, %d %s %d%s%s",
 			 wday_name[tm.tm_wday % 7], tm.tm_mday,
-			 month_name[tm.tm_mon % 12], tm.tm_year + 1900);
+			 month_name[tm.tm_mon % 12], tm.tm_year + 1900,
+			 suffix[0] ? "  " : "", suffix);
 	} else {
 		strncpy(time_buf, "--:--", sizeof(time_buf));
 		strncpy(date_buf, "Waiting for time sync...", sizeof(date_buf));
 	}
 
-	k_mutex_lock(&ui_state_mutex, K_FOREVER);
-	snprintf(alarm_buf, sizeof(alarm_buf), "Alarm  %02d:%02d   %s",
-		 alarm_hour, alarm_min, alarm_enabled ? "ON" : "off");
-	k_mutex_unlock(&ui_state_mutex);
-
 	lv_label_set_text(clk_date_lbl,  date_buf);
-	lv_label_set_text(clk_time_lbl,  time_buf);
-	lv_label_set_text(clk_alarm_lbl, alarm_buf);
+	lv_label_set_text(clk_time_lbl, time_buf);
+	update_clock_status_locked();
 	lv_screen_load(clk_scr);
+}
+
+static void render_alarm_locked(void)
+{
+	char time_buf[8];
+	char suffix[4];
+	char date_buf[48];
+	char meta_buf[32];
+	char alarm_buf[48];
+	char tz_buf[12];
+	struct timespec ts = {0};
+	struct tm tm = {0};
+	bool have_time = (sys_flag_get() & SYS_FLAG_TIME_VALID) &&
+			 sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) == 0;
+
+	if (have_time) {
+		time_t local = ts.tv_sec + (time_t)(tz_offset * 3600);
+
+		gmtime_r(&local, &tm);
+		format_hhmm(tm.tm_hour, tm.tm_min, clock_24h,
+			    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
+		snprintf(date_buf, sizeof(date_buf), "%s, %d %s %d",
+			 wday_name[tm.tm_wday % 7], tm.tm_mday,
+			 month_name[tm.tm_mon % 12], tm.tm_year + 1900);
+	} else {
+		strncpy(time_buf, "--:--", sizeof(time_buf));
+		suffix[0] = '\0';
+		strncpy(date_buf, "Waiting for time sync...", sizeof(date_buf));
+	}
+
+	format_tz_label(tz_buf, sizeof(tz_buf));
+	format_alarm_line(alarm_buf, sizeof(alarm_buf));
+	snprintf(meta_buf, sizeof(meta_buf), "%s  |  %s%s%s",
+		 tz_buf, clock_24h ? "24H" : "12H",
+		 suffix[0] ? "  " : "",
+		 suffix);
+
+	lv_label_set_text(alm_date_lbl, date_buf);
+	lv_label_set_text(alm_time_lbl, time_buf);
+	lv_label_set_text(alm_meta_lbl, meta_buf);
+	lv_label_set_text(alm_alarm_lbl, alarm_buf);
+	lv_screen_load(alm_scr);
 }
 
 static void device_ui_render_locked(void)
@@ -312,6 +427,7 @@ static void device_ui_render_locked(void)
 	case SCR_LOG:     render_log_locked();               break;
 	case SCR_NETWORK: render_net_locked();               break;
 	case SCR_CLOCK:   render_clk_locked();               break;
+	case SCR_ALARM:   render_alarm_locked();             break;
 	case SCR_MAIN:    lv_screen_load(main_scr_ref);      break;
 	}
 }
@@ -322,7 +438,7 @@ static void device_ui_render_locked(void)
 
 /* Adjust alarm/timezone state from a clock-screen button.  Returns true if
  * any value changed (caller persists + re-renders).  ui_state_mutex held. */
-static bool clock_apply_btn_locked(enum ui_btn btn)
+static bool alarm_apply_btn_locked(enum ui_btn btn)
 {
 	switch (btn) {
 	case UI_BTN_1: alarm_hour = (alarm_hour + 1) % 24;  return true;
@@ -330,8 +446,9 @@ static bool clock_apply_btn_locked(enum ui_btn btn)
 	case UI_BTN_3: alarm_min  = (alarm_min + 1) % 60;   return true;
 	case UI_BTN_4: alarm_min  = (alarm_min + 59) % 60;  return true;
 	case UI_BTN_5: alarm_enabled = !alarm_enabled;      return true;
-	case UI_BTN_6: if (tz_offset < 14)  { tz_offset++; return true; } break;
-	case UI_BTN_7: if (tz_offset > -12) { tz_offset--; return true; } break;
+	case UI_BTN_6: clock_24h = !clock_24h;              return true;
+	case UI_BTN_7: if (tz_offset < 14)  { tz_offset++; return true; } break;
+	case UI_BTN_8: if (tz_offset > -12) { tz_offset--; return true; } break;
 	default: break;
 	}
 	return false;
@@ -369,10 +486,12 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 
 		if (btn == UI_BTN_HL_RIGHT) {
 			next = (scr == SCR_LOG)     ? SCR_NETWORK :
-			       (scr == SCR_NETWORK) ? SCR_CLOCK   : SCR_LOG;
+			       (scr == SCR_NETWORK) ? SCR_CLOCK   :
+			       (scr == SCR_CLOCK)   ? SCR_ALARM   : SCR_LOG;
 		} else {
-			next = (scr == SCR_LOG)     ? SCR_CLOCK   :
-			       (scr == SCR_CLOCK)   ? SCR_NETWORK : SCR_LOG;
+			next = (scr == SCR_LOG)     ? SCR_ALARM   :
+			       (scr == SCR_NETWORK) ? SCR_LOG     :
+			       (scr == SCR_CLOCK)   ? SCR_NETWORK : SCR_CLOCK;
 		}
 		atomic_set(&active_scr, next);
 		signal_render();
@@ -406,9 +525,9 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 		}
 		break;
 
-	case SCR_CLOCK: {
+	case SCR_ALARM: {
 		k_mutex_lock(&ui_state_mutex, K_FOREVER);
-		bool dirty = clock_apply_btn_locked(btn);
+		bool dirty = alarm_apply_btn_locked(btn);
 
 		if (dirty) {
 			save_alarm_locked();
@@ -479,6 +598,7 @@ static void check_alarm(void)
 #define HDR_H      64
 #define FTR_H      72
 #define CONTENT_Y  HDR_H
+#define CLOCK_CENTER_Y_OFF (HDR_H / 2)
 
 static lv_color_t c_ink(void)   { return lv_color_hex(0x000000); }
 static lv_color_t c_paper(void) { return lv_color_hex(0xffffff); }
@@ -509,9 +629,15 @@ static lv_obj_t *new_screen(void)
 	return s;
 }
 
-/* Dark title bar with left title + right navigation hint. */
+/* Dark title bar with left title + subtle top-button capsules. */
 static void build_header(lv_obj_t *scr, const char *title)
 {
+	static const char *const top_labels[8] = {
+		NULL, NULL, NULL, NULL, "<", ">", "ENT", "ESC"
+	};
+	const int cw = SCR_W / 8;
+	const int gap = 6;
+	const int slot_h = 24;
 	lv_obj_t *bar = panel(scr, SCR_W, HDR_H);
 
 	lv_obj_set_pos(bar, 0, 0);
@@ -524,12 +650,30 @@ static void build_header(lv_obj_t *scr, const char *title)
 	lv_label_set_text(t, title);
 	lv_obj_align(t, LV_ALIGN_LEFT_MID, 20, 0);
 
-	lv_obj_t *nav = lv_label_create(bar);
+	for (int i = 0; i < 8; i++) {
+		const char *label = top_labels[i];
+		lv_obj_t *slot;
 
-	lv_obj_set_style_text_color(nav, c_gray(0xB0), 0);
-	lv_obj_set_style_text_font(nav, &lv_font_montserrat_14, 0);
-	lv_label_set_text(nav, "HL < >  screens      ESC  exit");
-	lv_obj_align(nav, LV_ALIGN_RIGHT_MID, -20, 0);
+		if (!label) {
+			continue;
+		}
+
+		slot = panel(bar, cw - gap, slot_h);
+
+		lv_obj_set_style_bg_color(slot, c_ink(), 0);
+		lv_obj_set_style_bg_opa(slot, LV_OPA_COVER, 0);
+		lv_obj_set_style_border_width(slot, 1, 0);
+		lv_obj_set_style_border_color(slot, c_gray(0x58), 0);
+		lv_obj_set_style_radius(slot, 4, 0);
+		lv_obj_set_pos(slot, i * cw + gap / 2, (HDR_H - slot_h) / 2);
+
+		lv_obj_t *txt = lv_label_create(slot);
+
+		lv_obj_set_style_text_color(txt, c_gray(0xB8), 0);
+		lv_obj_set_style_text_font(txt, &lv_font_montserrat_14, 0);
+		lv_label_set_text(txt, label);
+		lv_obj_center(txt);
+	}
 }
 
 /* Bottom strip of 8 key-caps aligned under the physical BTN_1..8. */
@@ -623,32 +767,81 @@ static void build_net_scr(void)
 
 static void build_clk_scr(void)
 {
-	static const char *const keys[8] = {
-		"Hour +", "Hour -", "Min +", "Min -",
-		"Alarm On/Off", "TZ +", "TZ -", 0
-	};
-
 	clk_scr = new_screen();
 	build_header(clk_scr, "Clock");
-	build_softkeys(clk_scr, keys);
 
 	clk_date_lbl = lv_label_create(clk_scr);
+	lv_obj_set_width(clk_date_lbl, SCR_W);
 	lv_obj_set_style_text_color(clk_date_lbl, c_gray(0x66), 0);
 	lv_obj_set_style_text_font(clk_date_lbl, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_align(clk_date_lbl, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(clk_date_lbl, "—");
-	lv_obj_align(clk_date_lbl, LV_ALIGN_TOP_MID, 0, CONTENT_Y + 24);
+
+	clk_time_bg_lbl = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_time_bg_lbl, c_gray(0xD0), 0);
+	lv_obj_set_style_text_opa(clk_time_bg_lbl, LV_OPA_70, 0);
+	lv_obj_set_style_text_font(clk_time_bg_lbl, &dseg_bold_italic_200, 0);
+	lv_obj_set_style_text_letter_space(clk_time_bg_lbl, 0, 0);
+	lv_label_set_text(clk_time_bg_lbl, CLK_GHOST_TEXT);
+	lv_obj_align(clk_time_bg_lbl, LV_ALIGN_CENTER, 0, CLOCK_CENTER_Y_OFF);
+	lv_obj_update_layout(clk_scr);
+	lv_obj_align(clk_date_lbl, LV_ALIGN_TOP_MID, 0,
+		lv_obj_get_y(clk_time_bg_lbl) - lv_obj_get_height(clk_date_lbl) - 22);
 
 	clk_time_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_time_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_time_lbl, &lv_font_montserrat_48, 0);
+	lv_obj_set_style_text_font(clk_time_lbl, &dseg_bold_italic_200, 0);
+	lv_obj_set_style_text_letter_space(clk_time_lbl, 0, 0);
 	lv_label_set_text(clk_time_lbl, "--:--");
-	lv_obj_align(clk_time_lbl, LV_ALIGN_CENTER, 0, -8);
+	lv_obj_align_to(clk_time_lbl, clk_time_bg_lbl, LV_ALIGN_CENTER, 0, 0);
 
-	clk_alarm_lbl = lv_label_create(clk_scr);
-	lv_obj_set_style_text_color(clk_alarm_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_alarm_lbl, &lv_font_montserrat_28, 0);
-	lv_label_set_text(clk_alarm_lbl, "Alarm  --:--   off");
-	lv_obj_align(clk_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -FTR_H - 24);
+	clk_status_lbl = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_status_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_status_lbl, &lv_font_montserrat_14, 0);
+	lv_label_set_text(clk_status_lbl, "");
+	lv_obj_align(clk_status_lbl, LV_ALIGN_TOP_RIGHT, -24, CONTENT_Y + 14);
+
+	clk_power_lbl = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_power_lbl, c_gray(0x66), 0);
+	lv_obj_set_style_text_font(clk_power_lbl, &lv_font_montserrat_14, 0);
+	lv_label_set_text(clk_power_lbl, "");
+	lv_obj_align(clk_power_lbl, LV_ALIGN_TOP_RIGHT, -94, CONTENT_Y + 14);
+}
+
+static void build_alarm_scr(void)
+{
+	static const char *const keys[8] = {
+		"Hour +", "Hour -", "Min +", "Min -",
+		"Alarm On/Off", "24/12", "TZ +", "TZ -"
+	};
+
+	alm_scr = new_screen();
+	build_header(alm_scr, "Alarm");
+	build_softkeys(alm_scr, keys);
+
+	alm_date_lbl = lv_label_create(alm_scr);
+	lv_obj_set_style_text_color(alm_date_lbl, c_gray(0x66), 0);
+	lv_obj_set_style_text_font(alm_date_lbl, &lv_font_montserrat_28, 0);
+	lv_label_set_text(alm_date_lbl, "—");
+	lv_obj_align(alm_date_lbl, LV_ALIGN_TOP_MID, 0, CONTENT_Y + 24);
+
+	alm_time_lbl = lv_label_create(alm_scr);
+	lv_obj_set_style_text_color(alm_time_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(alm_time_lbl, &lv_font_montserrat_48, 0);
+	lv_label_set_text(alm_time_lbl, "--:--");
+	lv_obj_align(alm_time_lbl, LV_ALIGN_CENTER, 0, -34);
+
+	alm_meta_lbl = lv_label_create(alm_scr);
+	lv_obj_set_style_text_color(alm_meta_lbl, c_gray(0x66), 0);
+	lv_obj_set_style_text_font(alm_meta_lbl, &lv_font_montserrat_14, 0);
+	lv_label_set_text(alm_meta_lbl, "UTC+0  |  24H");
+	lv_obj_align(alm_meta_lbl, LV_ALIGN_CENTER, 0, 20);
+
+	alm_alarm_lbl = lv_label_create(alm_scr);
+	lv_obj_set_style_text_color(alm_alarm_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(alm_alarm_lbl, &lv_font_montserrat_28, 0);
+	lv_label_set_text(alm_alarm_lbl, "Alarm --:-- ON");
+	lv_obj_align(alm_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -FTR_H - 24);
 }
 
 /* =========================================================================
@@ -711,9 +904,10 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 
 		check_alarm();
 
-		/* A bare clock tick only needs to repaint the clock screen;
+		/* A bare clock tick only needs to repaint the time-bearing screens;
 		 * other screens are static until the next input signal. */
-		bool is_clock = (enum dev_screen)atomic_get(&active_scr) == SCR_CLOCK;
+		enum dev_screen scr = (enum dev_screen)atomic_get(&active_scr);
+		bool is_clock = (scr == SCR_CLOCK || scr == SCR_ALARM);
 
 		if (!signaled && !is_clock) {
 			continue;
@@ -721,7 +915,22 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 
 		k_mutex_lock(&lvgl_mutex, K_FOREVER);
 		device_ui_render_locked();
-		ui_lvgl_flush(true);  /* dither the UI's arbitrary grays */
+
+		/* Full refresh only when the screen actually changes. An in-place
+		 * update (clock tick, new log line) is a fast partial — the panel
+		 * diffs the framebuffer itself, so it doesn't matter that LVGL
+		 * repaints the whole screen. */
+		static enum dev_screen prev_scr = SCR_MAIN;
+		bool switched = (scr != prev_scr);
+
+		prev_scr = scr;
+
+		/* Dither only screens that use real gray (clock/alarm ghost
+		 * segments); pure-text screens stay crisp B/W since dithering
+		 * muddies small anti-aliased text. */
+		bool dither = (scr == SCR_CLOCK || scr == SCR_ALARM);
+
+		ui_lvgl_flush(dither, switched ? UI_CTX_SWITCH : UI_CTX_UI);
 		k_mutex_unlock(&lvgl_mutex);
 	}
 }
@@ -742,6 +951,7 @@ void device_ui_init(lv_obj_t *main_scr)
 	build_log_scr();
 	build_net_scr();
 	build_clk_scr();
+	build_alarm_scr();
 
 	lv_screen_load(log_scr);
 }

@@ -38,6 +38,24 @@ config LLSS_DISPLAY_BIT_DEPTH
 	  return PNG frames instead of raw packed buffers. PNG is decoded
 	  on device via LVGL's lodepng integration.
 
+config LLSS_TOP_STRIP_HEIGHT
+	int "Top button-label strip height (px) reported to server"
+	default 64
+	help
+	  Pixels reserved at the top of the display for the button-label strip.
+	  Declared to LLSS at registration so the server renders the top strip
+	  into that band. Should match the device UI top band (HDR_H).
+	  0 = no top strip.
+
+config LLSS_BOTTOM_STRIP_HEIGHT
+	int "Bottom button-label strip height (px) reported to server"
+	default 72
+	help
+	  Pixels reserved at the bottom of the display for the button-label strip.
+	  Declared to LLSS at registration so the server renders the bottom strip
+	  into that band. Should match the device UI bottom band (FTR_H).
+	  0 = no bottom strip.
+
 config LLSS_TLS_TAG
 	int "TLS credential sec_tag for LLSS server CA certificate"
 	default 1

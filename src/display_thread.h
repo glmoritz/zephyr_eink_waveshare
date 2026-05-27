@@ -13,14 +13,36 @@
 extern struct k_mutex lvgl_mutex;
 
 /**
- * Flush the LVGL backbuffer to the display.
- * Calls lv_task_handler() then display_blanking_off().
+ * Refresh context — tells the flush layer whether to force a full refresh.
+ * Full is a semantic choice (the whole image is meant to change), never an
+ * "amount changed" guess: the panel diffs the framebuffer itself, so a small
+ * in-place change is a fast partial even if LVGL repainted the whole screen.
+ *
+ *  UI_CTX_SWITCH  screen/HLSS switch, boot, color-mode change: always full.
+ *  UI_CTX_UI      device-UI in-place repaint (clock tick, new log line):
+ *                 partial; driver's periodic floor is the ghosting backstop.
+ *  UI_CTX_SERVER  whole-image server frame: partial (same floor backstop).
+ *                 This is the seam where a future server-side diff hint
+ *                 ("this frame changed a lot -> full") gets injected.
+ */
+enum ui_refresh_ctx {
+	UI_CTX_SWITCH = 0,
+	UI_CTX_UI,
+	UI_CTX_SERVER,
+};
+
+/**
+ * Flush the LVGL backbuffer to the display, choosing partial vs full refresh.
+ * Calls lv_task_handler() then the appropriate panel refresh.
  * Must be called with lvgl_mutex held.
  *
- * @param dither  true for device-UI screens (ordered dithering of arbitrary
- *                grays); false for pre-dithered server frames.
+ * @param dither  true for device-UI screens with arbitrary grays — ordered-
+ *                dithered DOWN to 1bpp B/W, still partial-capable; false for
+ *                already-dithered content (server frames) that must not be
+ *                re-dithered. Both stay mono/partial-capable.
+ * @param ctx     refresh context, see enum ui_refresh_ctx.
  */
-void ui_lvgl_flush(bool dither);
+void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx);
 
 /**
  * Initialise LVGL, create the main server-frame screen, start the

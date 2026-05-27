@@ -35,6 +35,12 @@ enum llss_input_result {
 	LLSS_INPUT_ERROR,
 };
 
+/* Which pressed-state button strip to fetch (protocol extension). */
+enum llss_strip {
+	LLSS_STRIP_TOP_PRESSED = 0,
+	LLSS_STRIP_BOTTOM_PRESSED,
+};
+
 /* =========================================================================
  * Data structures
  * ========================================================================= */
@@ -180,6 +186,29 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 int llss_fetch_frame(const char *access_token, const char *device_id,
 		     const char *frame_id,
 		     uint8_t *dst, size_t dst_size, size_t *len_out);
+
+/**
+ * @brief Fetch a pressed-state button strip for a frame (protocol extension).
+ *
+ * Requests `GET /devices/{id}/frames/{frame_id}?strip=top_pressed|bottom_pressed`.
+ * The strip is an optional, server-rendered convenience for local press
+ * feedback; a server (or frame) that has no such strip returns 404, which is
+ * reported as -ENOENT (not an error — the caller simply skips press feedback).
+ *
+ * @param access_token  Valid Bearer access token.
+ * @param device_id     Registered device ID.
+ * @param frame_id      Frame ID the strip belongs to.
+ * @param strip         Which strip to fetch.
+ * @param dst           Destination buffer for the PNG body.
+ * @param dst_size      Capacity of @p dst in bytes.
+ * @param len_out       Set to bytes written on success.
+ * @return 0 on success, -ENOENT if no pressed strip is available (404),
+ *         -EACCES on 401/403, -ENODATA on empty body, negative errno or
+ *         positive HTTP status on other errors.
+ */
+int llss_fetch_pressed_strip(const char *access_token, const char *device_id,
+			     const char *frame_id, enum llss_strip strip,
+			     uint8_t *dst, size_t dst_size, size_t *len_out);
 
 /**
  * @brief Send a button input event to the server.

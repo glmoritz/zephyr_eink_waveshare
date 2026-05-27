@@ -93,15 +93,18 @@ static lv_image_dsc_t frame_dsc;
  * Public flush — shared with device_ui.c
  * ========================================================================= */
 
-void ui_lvgl_flush(bool dither)
+void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 {
 	const struct device *disp = DEVICE_DT_GET(DISPLAY_NODE);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
 	/* Set before lv_task_handler() — that is what drives the driver's
-	 * write() (L8->2bpp conversion) for the dirty regions. */
+	 * write() conversion for the dirty regions. Dither here means "dither
+	 * arbitrary grays DOWN to 1bpp B/W" (not 4-level gray), so dithered UI
+	 * stays in MONO and remains partial-refresh capable. */
 	if (device_is_ready(disp)) {
 		custom_ssd16xx_set_dither(disp, dither);
+		custom_ssd16xx_set_color_mode(disp, CUSTOM_SSD16XX_MONO);
 	}
 #else
 	ARG_UNUSED(dither);
@@ -109,9 +112,26 @@ void ui_lvgl_flush(bool dither)
 
 	lv_task_handler();
 
-	if (device_is_ready(disp)) {
-		display_blanking_off(disp);
+	if (!device_is_ready(disp)) {
+		return;
 	}
+
+#if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+	/* Full only when the whole image is meant to change (screen/HLSS switch,
+	 * boot). For incremental updates we always request partial: the panel
+	 * diffs the framebuffer itself, so a localized change is a fast partial
+	 * regardless of how much LVGL repainted. The driver still upgrades to
+	 * full on its own when it must (no valid previous frame, gray mode, or
+	 * the periodic ghosting floor). */
+	if (ctx == UI_CTX_SWITCH) {
+		custom_ssd16xx_refresh_full(disp);
+	} else {
+		custom_ssd16xx_refresh_partial(disp);
+	}
+#else
+	ARG_UNUSED(ctx);
+	display_blanking_off(disp);
+#endif
 }
 
 /* =========================================================================
@@ -121,6 +141,7 @@ void ui_lvgl_flush(bool dither)
 static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 {
 	static bool first_frame = true;
+	bool was_first = first_frame;
 
 	if (first_frame) {
 		first_frame = false;
@@ -143,10 +164,12 @@ static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 
 	lv_image_set_src(frame_img, &frame_dsc);
 
-	/* Only flush if the main screen is actually visible.  Server frames are
-	 * already dithered — do not re-dither. */
+	/* Only flush if the main screen is actually visible. Server frames are
+	 * already dithered to the panel palette — do not re-dither, and they are
+	 * mono (phase 1), so they are partial-refresh capable. The very first
+	 * frame also switches screens, so force a full there. */
 	if (!device_ui_is_active()) {
-		ui_lvgl_flush(false);
+		ui_lvgl_flush(false, was_first ? UI_CTX_SWITCH : UI_CTX_SERVER);
 	}
 }
 

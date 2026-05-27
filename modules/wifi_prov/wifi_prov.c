@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <zephyr/drivers/flash.h>
-#include <zephyr/fs/nvs.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/dhcpv4_server.h>
@@ -15,7 +13,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/wifi_mgmt.h>
-#include <zephyr/storage/flash_map.h>
+#include <zephyr/settings/settings.h>
 
 LOG_MODULE_REGISTER(wifi_prov, LOG_LEVEL_DBG);
 
@@ -110,69 +108,91 @@ static void ensure_dns_context_active(struct net_if *iface)
 }
 
 /* =========================================================================
- * NVS credential storage
+ * Settings-backed credential storage
  * ========================================================================= */
 
-#define NVS_WIFI_SSID_ID 1U
-#define NVS_WIFI_PASS_ID 2U
+static char stored_ssid[33];
+static char stored_pass[65];
 
-static struct nvs_fs nvs;
-
-static int nvs_init_storage(void)
+static int wifi_settings_set(const char *key, size_t len,
+			    settings_read_cb read_cb, void *cb_arg)
 {
-	struct flash_pages_info info;
-	int rc;
+	char *dst = NULL;
+	size_t dst_len = 0;
+	ssize_t r;
 
-	nvs.flash_device = FIXED_PARTITION_DEVICE(storage_partition);
-	if (!device_is_ready(nvs.flash_device)) {
-		LOG_ERR("Flash device not ready");
-		return -ENODEV;
+	if (!strcmp(key, "ssid")) {
+		dst = stored_ssid;
+		dst_len = sizeof(stored_ssid);
+	} else if (!strcmp(key, "pass")) {
+		dst = stored_pass;
+		dst_len = sizeof(stored_pass);
+	} else {
+		return 0;
 	}
 
-	nvs.offset = FIXED_PARTITION_OFFSET(storage_partition);
-	rc = flash_get_page_info_by_offs(nvs.flash_device, nvs.offset, &info);
-	if (rc) {
-		LOG_ERR("flash_get_page_info_by_offs: %d", rc);
-		return rc;
+	r = read_cb(cb_arg, dst, dst_len - 1);
+	if (r < 0) {
+		return (int)r;
 	}
 
-	nvs.sector_size = info.size;
-	nvs.sector_count = 4;
+	dst[r] = '\0';
+	return 0;
+}
 
-	rc = nvs_mount(&nvs);
-	if (rc) {
-		LOG_ERR("nvs_mount: %d", rc);
-	}
-	return rc;
+SETTINGS_STATIC_HANDLER_DEFINE(wifi_prov_store, "wifi", NULL,
+			       wifi_settings_set, NULL, NULL);
+
+static int creds_init_storage(void)
+{
+	memset(stored_ssid, 0, sizeof(stored_ssid));
+	memset(stored_pass, 0, sizeof(stored_pass));
+	return settings_load_subtree("wifi");
 }
 
 static bool creds_load(char *ssid, size_t ssid_sz, char *pass, size_t pass_sz)
 {
-	ssize_t r;
-
-	r = nvs_read(&nvs, NVS_WIFI_SSID_ID, ssid, ssid_sz - 1);
-	if (r <= 0) {
+	if (!stored_ssid[0]) {
 		return false;
 	}
-	ssid[r] = '\0';
 
-	r = nvs_read(&nvs, NVS_WIFI_PASS_ID, pass, pass_sz - 1);
-	pass[(r > 0) ? r : 0] = '\0';
+	strncpy(ssid, stored_ssid, ssid_sz - 1);
+	ssid[ssid_sz - 1] = '\0';
+	strncpy(pass, stored_pass, pass_sz - 1);
+	pass[pass_sz - 1] = '\0';
 
 	return ssid[0] != '\0';
 }
 
 static void creds_save(const char *ssid, const char *pass)
 {
-	nvs_write(&nvs, NVS_WIFI_SSID_ID, ssid, strlen(ssid) + 1);
-	nvs_write(&nvs, NVS_WIFI_PASS_ID, pass, strlen(pass) + 1);
+	int rc;
+
+	rc = settings_save_one("wifi/ssid", ssid, strlen(ssid) + 1);
+	if (rc) {
+		LOG_ERR("save wifi/ssid: %d", rc);
+		return;
+	}
+
+	rc = settings_save_one("wifi/pass", pass, strlen(pass) + 1);
+	if (rc) {
+		LOG_ERR("save wifi/pass: %d", rc);
+		return;
+	}
+
+	strncpy(stored_ssid, ssid, sizeof(stored_ssid) - 1);
+	stored_ssid[sizeof(stored_ssid) - 1] = '\0';
+	strncpy(stored_pass, pass, sizeof(stored_pass) - 1);
+	stored_pass[sizeof(stored_pass) - 1] = '\0';
 	LOG_INF("Credentials saved for SSID: %s", ssid);
 }
 
 static void creds_erase(void)
 {
-	nvs_delete(&nvs, NVS_WIFI_SSID_ID);
-	nvs_delete(&nvs, NVS_WIFI_PASS_ID);
+	settings_delete("wifi/ssid");
+	settings_delete("wifi/pass");
+	stored_ssid[0] = '\0';
+	stored_pass[0] = '\0';
 	LOG_INF("Credentials erased");
 }
 
@@ -745,7 +765,9 @@ static char ap_ssid_buf[33];
 void wifi_prov_init(wifi_prov_cb_t cb)
 {
 	state_cb = cb;
-	nvs_init_storage();
+	if (creds_init_storage() != 0) {
+		LOG_WRN("Failed to load stored WiFi credentials");
+	}
 
 	net_mgmt_init_event_callback(&wifi_cb, wifi_event_handler,
 				     NET_EVENT_WIFI_MASK);

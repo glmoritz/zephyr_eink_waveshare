@@ -534,13 +534,33 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 	struct custom_ssd16xx_data *data = dev->data;
 	const uint8_t *src = buf;
 	bool dither = data->dither;
+	bool mono = (data->color_mode == CUSTOM_SSD16XX_MONO);
 
 	for (uint16_t row = 0; row < desc->height; row++) {
 		for (uint16_t col = 0; col < desc->width; col++) {
 			uint8_t luma = src[(size_t)row * desc->pitch + col];
 			uint16_t px = x + col;
 			uint16_t py = y + row;
-			uint8_t g2 = quantise_2bpp(luma, dither, px, py);
+			uint8_t g2;
+
+			if (mono) {
+				/* 1bpp, partial-refresh capable. Arbitrary grays are
+				 * ordered-dithered DOWN to pure B/W: the shade comes from
+				 * the dot pattern, not a gray waveform, so dithered UI
+				 * (e.g. the clock) stays partial-capable. Without dither,
+				 * a hard threshold preserves an already-dithered frame's
+				 * 0/255 instead of re-dithering it. */
+				if (dither) {
+					int thr = bayer4[py & 3][px & 3] * 16 + 8; /* 8..248 */
+
+					g2 = (luma > thr) ? 0x3u : 0x0u;
+				} else {
+					g2 = (luma >= 128u) ? 0x3u : 0x0u;
+				}
+			} else {
+				/* GRAY2: real 4-level waveform path, full refresh only. */
+				g2 = quantise_2bpp(luma, dither, px, py);
+			}
 			uint16_t byte_idx = py * CUSTOM_SSD16XX_COLS + px / 8u;
 			uint8_t bit_pos = 7u - (px % 8u);
 

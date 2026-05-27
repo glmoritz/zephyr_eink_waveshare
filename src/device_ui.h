@@ -7,15 +7,16 @@
 #include "input_events.h"
 
 /*
- * Device-local UI — boot log console, network status, clock/alarm.
+ * Device-local UI — boot log console, network status, clock, and alarm.
  *
- * Three LVGL screens (log, network, clock) live alongside the server-frame
+ * Four LVGL screens (log, network, clock, alarm) live alongside the server-frame
  * screen.  Button routing: enqueue_event() in llss_thread calls
  * device_ui_handle_input() first; returning true means "consumed, do not
  * forward to the LLSS server."
  *
  * Trigger: ENTER LONG_PRESS from the main (server) screen opens the log.
- * ESC returns to main.  HL_LEFT / HL_RIGHT cycle log → network → clock → log.
+ * ESC returns to main.  HL_LEFT / HL_RIGHT cycle
+ * log → network → clock → alarm → log.
  */
 
 /**

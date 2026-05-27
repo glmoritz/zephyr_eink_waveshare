@@ -34,15 +34,21 @@ int custom_ssd16xx_set_color_mode(const struct device *dev,
 				  enum custom_ssd16xx_color_mode mode);
 
 /*
- * Enable/disable ordered (Bayer 4x4) dithering during the L8 -> 2bpp
- * conversion in write().
+ * Enable/disable ordered (Bayer 4x4) dithering in write().
  *
- * OFF (default): nearest-band quantisation (luma >> 6).  Correct for content
- * the server already dithered to the panel's exact levels (0/85/170/255) —
- * re-dithering would corrupt it.
+ * In MONO mode (the partial-capable default), dithering quantises arbitrary
+ * grays DOWN to 1bpp black/white: the apparent shade comes from the dot
+ * pattern, not a gray waveform, so dithered content stays partial-refresh
+ * capable.
  *
- * ON: device-local UI screens, which use arbitrary grays.  Dithering renders
- * those as believable shades on the 4-level panel instead of hard banding.
+ * OFF (default): hard threshold.  Correct for content already dithered to
+ * pure B/W by the server (its 0/255 must be preserved, not re-dithered).
+ *
+ * ON: device-local UI screens, which use arbitrary grays (anti-aliased fonts,
+ * gray fills) and want believable shades instead of hard banding.
+ *
+ * (In GRAY2 mode this flag instead dithers across the 4 gray levels; GRAY2 is
+ * full-refresh only.)
  */
 int custom_ssd16xx_set_dither(const struct device *dev, bool enable);
 
