@@ -196,6 +196,30 @@ Any flags passed to `run_native_sim.sh` are forwarded to `zephyr.exe`. Useful on
 ./scripts/run_native_sim.sh --help               # full list
 ```
 
+### Shell and input injection
+
+If you want the Zephyr shell on stdin/stdout, launch the sim with:
+
+```sh
+./scripts/run_native_sim.sh -uart_stdinout
+```
+
+That gives you the normal `uart:~$` prompt in the terminal running the sim.
+The `btn` shell command injects button events through the same input callback
+path used by the device build, so native_sim can exercise the LLSS/UI flow
+without the MCP230XX hardware.
+
+Examples:
+
+```sh
+btn press BTN_1
+btn long BTN_1
+btn press ENTER
+btn press HL_LEFT
+```
+
+Use `btn` with no arguments to list the available subcommands.
+
 ### Resetting persistent state
 
 The flash backing file holds NVS, settings, and the TLS session cache. To exercise cold-boot behaviour from a clean slate:
@@ -216,6 +240,17 @@ gdb build-sim/zephyr/zephyr.exe
 ```
 
 Or attach to a running instance with `gdb -p <pid>`. Breakpoints, watchpoints, and full source-level stepping all work because everything is host-native — this is the main reason the sim is useful for chasing protocol bugs.
+
+For a shell-aware VS Code debug session, use the launch configuration
+`Debug native_sim (hello_eink, with console panel)`. It builds `build-sim`,
+restarts the simulator in a dedicated terminal via `run_native_sim.sh
+-uart_stdinout`, and then attaches `gdb` to the already-running `zephyr.exe`
+process. That matches the manually-tested workflow: the shell stays live in its
+own panel, and the debugger attaches separately so pause / continue / stepping
+work normally.
+
+When VS Code prompts for a process, choose the `build-sim/zephyr/zephyr.exe`
+entry.
 
 ---
 
