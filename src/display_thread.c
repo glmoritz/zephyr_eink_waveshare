@@ -1,15 +1,18 @@
 /*
- * Display thread — LVGL rendering + PNG frame worker
+ * Display thread — LVGL rendering + server frame worker
  *
- * Owns the display semaphores, the shared PNG buffer, and the LVGL main
+ * Owns the display semaphores, the shared frame buffers, and the LVGL main
  * screen (server frame).  The device-local UI (log, network, clock) lives
  * in device_ui.c and shares lvgl_mutex + ui_lvgl_flush().
+ *
+ * Server frames are the panel-native 1bpp packed bitmap (fetched with
+ * ?raw=true) and are shown via LVGL as a native I1 image — no PNG decode.
  *
  * Boot sequence:
  *   1. ui_init() creates the main LVGL screen and a friendly placeholder.
  *   2. device_ui builds the developer-facing menu screens, but the user
  *      remains on the main screen unless they explicitly open the menu.
- *   3. On the first server frame, display_png_frame_locked() replaces the
+ *   3. On the first server frame, display_frame_locked() replaces the
  *      placeholder with live server content.
  *   4. Subsequent frames update the main screen silently if device UI is
  *      open; exiting the device menu (ESC) reveals the latest frame.
@@ -44,12 +47,12 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 #define DISPLAY_THREAD_PRIORITY 12
 
 /* =========================================================================
- * Triple-buffered PNG frame pipeline (PSRAM, zero-copy)
+ * Triple-buffered server frame pipeline (PSRAM, zero-copy)
  *
  * Three SPIRAM buffers cycle through three roles so the producer (LLSS
  * thread) never blocks and never copies:
  *
- *   front  — the LLSS thread fetches the next frame straight into this
+ *   front  — the LLSS thread fetches the next packed frame straight into this
  *            buffer (HTTP body lands here directly, no memcpy)
  *   middle — "mailbox": the most recent complete frame, awaiting display
  *   back   — the buffer the display thread is currently rendering from
@@ -62,6 +65,13 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
  * ========================================================================= */
 
 #define FRAME_BUF_COUNT 3
+
+/* Server frames arrive as the panel-native 1bpp packed bitmap (?raw=true) and
+ * are handed to LVGL as a native I1 image — no PNG decode. An I1 image expects
+ * a 2-entry palette (2 * lv_color32_t = 8 bytes) immediately BEFORE the bitmap,
+ * so we reserve that many bytes at the start of every slot and land the HTTP
+ * body just after it. */
+#define LLSS_I1_PALETTE_BYTES (2 * (int)sizeof(lv_color32_t)) /* 8 */
 
 static uint8_t frame_mem[FRAME_BUF_COUNT][CONFIG_LLSS_FRAME_BUF_SIZE]
 	LLSS_EXT_RAM_NOINIT("llss_frames");
@@ -207,7 +217,23 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
  * Frame rendering
  * ========================================================================= */
 
-static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
+/* Index 0 = black, index 1 = white. The backend packs the 1bpp bitmap MSB-first
+ * with bit 1 = white, which matches LVGL's I1 bit order, so this palette maps
+ * the bits straight to the right shade. lv_color32_t is {blue, green, red,
+ * alpha}; for a grayscale panel R==G==B is all that matters. */
+static const lv_color32_t i1_palette[2] = {
+	{ .blue = 0x00, .green = 0x00, .red = 0x00, .alpha = 0xFF }, /* 0: black */
+	{ .blue = 0xFF, .green = 0xFF, .red = 0xFF, .alpha = 0xFF }, /* 1: white */
+};
+
+/*
+ * Render a server frame. `slot` is a frame buffer whose first
+ * LLSS_I1_PALETTE_BYTES are reserved for the I1 palette and whose packed 1bpp
+ * bitmap (bitmap_len bytes) follows. We present it to LVGL as a native I1
+ * image: LVGL decodes it line-by-line on demand (image cache + RAM-load are
+ * disabled), so there is no full-screen RGB expansion and no PNG decode.
+ */
+static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 {
 	static bool first_frame = true;
 	bool was_first = first_frame;
@@ -219,12 +245,17 @@ static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 		lv_screen_load(lvgl_main_scr);
 	}
 
+	/* Fill the palette LVGL expects immediately before the bitmap. */
+	memcpy(slot, i1_palette, sizeof(i1_palette));
+
 	memset(&frame_dsc, 0, sizeof(frame_dsc));
-	frame_dsc.header.cf  = LV_COLOR_FORMAT_L8;
-	frame_dsc.header.w   = 800;
-	frame_dsc.header.h   = 480;
-	frame_dsc.data_size  = png_len;
-	frame_dsc.data       = png_buf;
+	frame_dsc.header.magic  = LV_IMAGE_HEADER_MAGIC;
+	frame_dsc.header.cf     = LV_COLOR_FORMAT_I1;
+	frame_dsc.header.w      = 800;
+	frame_dsc.header.h      = 480;
+	frame_dsc.header.stride = 800 / 8;          /* 100 bytes per row */
+	frame_dsc.data          = slot;             /* palette + bitmap, contiguous */
+	frame_dsc.data_size     = sizeof(i1_palette) + bitmap_len;
 
 	if (!frame_img) {
 		frame_img = lv_image_create(lvgl_main_scr);
@@ -235,9 +266,9 @@ static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 	main_status_hide_locked();
 
 	/* Only flush if the main screen is actually visible. Server frames are
-	 * already dithered to the panel palette — do not re-dither, and they are
-	 * mono (phase 1), so they are partial-refresh capable. The very first
-	 * frame also switches screens, so force a full there. */
+	 * already dithered to pure B/W by the server — do not re-dither, and they
+	 * are mono, so they are partial-refresh capable. The very first frame also
+	 * switches screens, so force a full there. */
 	if (!device_ui_is_active()) {
 		ui_lvgl_flush(false, was_first ? UI_CTX_SWITCH : UI_CTX_SERVER);
 	}
@@ -276,7 +307,7 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 		LOG_INF("Displaying frame (%zu bytes)", fb_back.len);
 
 		k_mutex_lock(&lvgl_mutex, K_FOREVER);
-		display_png_frame_locked(fb_back.buf, fb_back.len);
+		display_frame_locked(fb_back.buf, fb_back.len);
 		k_mutex_unlock(&lvgl_mutex);
 	}
 }
@@ -338,9 +369,11 @@ void ui_server_status_hide(void)
 uint8_t *display_frame_write_buf(size_t *cap)
 {
 	if (cap) {
-		*cap = CONFIG_LLSS_FRAME_BUF_SIZE;
+		*cap = CONFIG_LLSS_FRAME_BUF_SIZE - LLSS_I1_PALETTE_BYTES;
 	}
-	return fb_front.buf;
+	/* Body lands after the reserved I1 palette space; the palette is filled
+	 * in at render time (display_frame_locked). */
+	return fb_front.buf + LLSS_I1_PALETTE_BYTES;
 }
 
 int display_frame_submit(size_t len)

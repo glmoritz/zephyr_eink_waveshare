@@ -1123,7 +1123,9 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 	char path[LLSS_MAX_URL_LEN];
 	char auth_hdr[LLSS_TOKEN_MAX + 32];
 
-	snprintf(path, sizeof(path), "/devices/%s/frames/%s",
+	/* ?raw=true => panel-native packed framebuffer (1bpp: 48000 B, MSB-first)
+	 * instead of a PNG. Blitted straight to panel RAM — no on-device decode. */
+	snprintf(path, sizeof(path), "/devices/%s/frames/%s?raw=true",
 		 device_id, frame_id);
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
