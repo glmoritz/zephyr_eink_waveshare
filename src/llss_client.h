@@ -48,13 +48,13 @@ enum llss_strip {
 struct llss_device_state {
 	enum llss_action action;
 	char             frame_id[64];
-	int              poll_after_ms;
+	int32_t          poll_after_ms;
 };
 
 struct llss_input_response {
 	enum llss_input_result status;
 	char                   frame_id[64];
-	int                    poll_after_ms;
+	int32_t                poll_after_ms;
 };
 
 /* =========================================================================

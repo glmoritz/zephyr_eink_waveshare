@@ -6,7 +6,10 @@
 #ifndef LLSS_CA_CERT_H_
 #define LLSS_CA_CERT_H_
 
-static const unsigned char llss_ca_cert[] =
+#include <stddef.h>
+#include <stdint.h>
+
+static const uint8_t llss_ca_cert[] =
 	"-----BEGIN CERTIFICATE-----\n"
 	"MIIEVjCCAj6gAwIBAgIQY5WTY8JOcIJxWRi/w9ftVjANBgkqhkiG9w0BAQsFADBP\n"
 	"MQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy\n"

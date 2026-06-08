@@ -3,6 +3,8 @@
 #include "certs/ca_cert.h"
 
 #include <errno.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,7 +42,7 @@ static uint8_t json_recv_buf[JSON_BUF_SIZE];
 
 static char server_host[LLSS_MAX_HOSTNAME];
 static char server_base_path[LLSS_MAX_BASE_PATH]; /* e.g. "/api" */
-static int  server_port;
+static int32_t  server_port;
 
 static bool client_initialised;
 static struct sockaddr_storage cached_server_addr;
@@ -53,7 +55,7 @@ static bool cached_server_addr_valid;
  * one.  A single TLS handshake then covers all API calls in one wake cycle.
  * Set by llss_session_open(), cleared by llss_session_close().
  */
-static int session_sock = -1;
+static int32_t session_sock = -1;
 
 /*
  * Phase B — TLS session ticket in RTC RAM.
@@ -145,7 +147,7 @@ static int parse_server_url(const char *url)
 	}
 
 	/* port */
-	server_port = (int)strtol(colon + 1, NULL, 10);
+	server_port = (int32_t)strtol(colon + 1, NULL, 10);
 
 	/* base path */
 	if (slash) {
@@ -172,7 +174,7 @@ struct llss_dns_state {
 	struct k_sem           done;
 	struct sockaddr_storage addrs[LLSS_DNS_MAX_ADDRS];
 	socklen_t              addrlen[LLSS_DNS_MAX_ADDRS];
-	int                    count;
+	int32_t                count;
 };
 
 static void dns_result_cb(enum dns_resolve_status status,
@@ -209,9 +211,9 @@ static int ensure_dns_context_active(void)
 
 	char server_buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN];
 	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
-	int count = 0;
+	int32_t count = 0;
 
-	for (int i = 0; i < ARRAY_SIZE(ctx->servers) &&
+	for (int32_t i = 0; i < ARRAY_SIZE(ctx->servers) &&
 		     count < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
 		char *dst = server_buf[count];
 		struct sockaddr *sa = &ctx->servers[i].dns_server;
@@ -242,7 +244,7 @@ static int ensure_dns_context_active(void)
 
 	servers[count] = NULL;
 
-	int ret = dns_resolve_init(ctx, servers, NULL);
+	int32_t ret = dns_resolve_init(ctx, servers, NULL);
 
 	if (ret < 0) {
 		LOG_ERR("dns_resolve_init(recover) failed: %d", ret);
@@ -271,7 +273,7 @@ static void cache_server_addr(const struct sockaddr *addr, socklen_t addrlen)
 	cached_server_addr_valid = true;
 
 	char addr_buf[NET_IPV6_ADDR_LEN];
-	int family = addr->sa_family;
+	int32_t family = addr->sa_family;
 	void *raw_addr = NULL;
 
 	if (family == AF_INET) {
@@ -294,10 +296,10 @@ static void set_server_port(struct sockaddr *addr)
 	}
 }
 
-static void log_tls_socket_state(int sock, const char *phase)
+static void log_tls_socket_state(int32_t sock, const char *phase)
 {
-	int verify_result = 0;
-	int ciphersuite = 0;
+	int32_t verify_result = 0;
+	int32_t ciphersuite = 0;
 	socklen_t optlen;
 
 	optlen = sizeof(verify_result);
@@ -318,11 +320,11 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 	struct sockaddr_storage target = {0};
 	sec_tag_t tls_tags[] = { CONFIG_LLSS_TLS_TAG };
 	char addr_buf[NET_IPV6_ADDR_LEN] = "?";
-	int cert_nocopy = TLS_CERT_NOCOPY_OPTIONAL;
-	int family;
-	int sock;
-	int rc;
-	int saved_errno;
+	int32_t cert_nocopy = TLS_CERT_NOCOPY_OPTIONAL;
+	int32_t family;
+	int32_t sock;
+	int32_t rc;
+	int32_t saved_errno;
 	int64_t start_ms;
 	void *raw_addr;
 
@@ -340,7 +342,7 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 		net_addr_ntop(family, raw_addr, addr_buf, sizeof(addr_buf));
 	}
 
-	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_3);
+	sock = zsock_socket(family, SOCK_STREAM, IPPROTO_TLS_1_2);
 	if (sock < 0) {
 		LOG_DBG("socket(af=%d): %d", family, errno);
 		return -errno;
@@ -356,13 +358,13 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 	/* Phase B: enable Zephyr's in-memory session cache so that if this
 	 * socket is closed and re-opened within the same boot the TLS
 	 * abbreviated handshake (~150 ms) is used instead of a full one. */
-	int session_cache_opt = TLS_SESSION_CACHE_ENABLED;
+	int32_t session_cache_opt = TLS_SESSION_CACHE_ENABLED;
 
 	zsock_setsockopt(sock, SOL_TLS, TLS_SESSION_CACHE,
 			 &session_cache_opt, sizeof(session_cache_opt));
 
 	if (llss_ca_cert_len == 0) {
-		int peer_verify = TLS_PEER_VERIFY_NONE;
+		int32_t peer_verify = TLS_PEER_VERIFY_NONE;
 
 		zsock_setsockopt(sock, SOL_TLS, TLS_PEER_VERIFY,
 				 &peer_verify, sizeof(peer_verify));
@@ -377,15 +379,15 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 		cache_server_addr((struct sockaddr *)&target, addrlen);
 		log_tls_socket_state(sock, "connect ok");
 
-		LOG_INF("LLSS connect ok: %s in %lld ms",
-			addr_buf, (long long)(k_uptime_get() - start_ms));
+		LOG_INF("LLSS connect ok: %s in %" PRIi64 " ms",
+			addr_buf, k_uptime_get() - start_ms);
 		return sock;
 	}
 
 	saved_errno = errno;
 	log_tls_socket_state(sock, "connect fail");
-	LOG_INF("LLSS connect fail: %s errno=%d after %lld ms",
-		addr_buf, saved_errno, (long long)(k_uptime_get() - start_ms));
+	LOG_INF("LLSS connect fail: %s errno=%d after %" PRIi64 " ms",
+		addr_buf, saved_errno, k_uptime_get() - start_ms);
 	zsock_close(sock);
 	return -saved_errno;
 }
@@ -394,9 +396,9 @@ static int open_tls_socket(void)
 {
 	struct llss_dns_state dns = { .count = 0 };
 	uint16_t dns_id_aaaa, dns_id_a;
-	int queries = 0;
-	int ret;
-	int sock;
+	int32_t queries = 0;
+	int32_t ret;
+	int32_t sock;
 	int64_t dns_start_ms;
 
 	if (cached_server_addr_valid) {
@@ -436,7 +438,7 @@ static int open_tls_socket(void)
 	}
 
 	/* Wait for every query that was successfully submitted */
-	for (int i = 0; i < queries; i++) {
+	for (int32_t i = 0; i < queries; i++) {
 		k_sem_take(&dns.done, K_FOREVER);
 	}
 
@@ -445,12 +447,12 @@ static int open_tls_socket(void)
 		return -EHOSTUNREACH;
 	}
 
-	LOG_INF("LLSS DNS done: %d result(s) in %lld ms",
-		dns.count, (long long)(k_uptime_get() - dns_start_ms));
+	LOG_INF("LLSS DNS done: %d result(s) in %" PRIi64 " ms",
+		dns.count, k_uptime_get() - dns_start_ms);
 
 	sock = -1;
 
-	for (int i = 0; i < dns.count && sock < 0; i++) {
+	for (int32_t i = 0; i < dns.count && sock < 0; i++) {
 		struct sockaddr *addr = (struct sockaddr *)&dns.addrs[i];
 		sock = connect_tls_addr(addr, dns.addrlen[i]);
 	}
@@ -472,7 +474,7 @@ struct resp_ctx {
 	uint8_t *buf;
 	size_t   buf_size;
 	size_t   len;
-	int      http_status;
+	int32_t  http_status;
 	bool     overflow;
 	bool     saw_body;
 	int64_t  first_body_ms;
@@ -544,7 +546,7 @@ static int do_request(enum http_method method, const char *path,
 	int64_t req_start_ms = k_uptime_get();
 	/* Phase A: reuse persistent session socket if one is open. */
 	bool owned_sock = (session_sock < 0);
-	int sock = owned_sock ? open_tls_socket() : session_sock;
+	int32_t sock = owned_sock ? open_tls_socket() : session_sock;
 
 	if (sock < 0) {
 		return sock;
@@ -557,7 +559,7 @@ static int do_request(enum http_method method, const char *path,
 
 	/* Build header array (max 4 extra headers + NULL terminator) */
 	const char *headers[8];
-	int         hdridx = 0;
+	int32_t     hdridx = 0;
 
 	/* auth_header must include "\r\n" at the end */
 	static char auth_hdr_buf[LLSS_TOKEN_MAX + 32];
@@ -579,7 +581,7 @@ static int do_request(enum http_method method, const char *path,
 
 	/* Build a NUL-terminated path on the stack */
 	char full_path[LLSS_MAX_URL_LEN];
-	int  plen = snprintf(full_path, sizeof(full_path), "%s%s",
+	int32_t plen = snprintf(full_path, sizeof(full_path), "%s%s",
 			     server_base_path, path);
 
 	if (plen < 0 || (size_t)plen >= sizeof(full_path)) {
@@ -604,20 +606,20 @@ static int do_request(enum http_method method, const char *path,
 		.recv_buf_len  = recv_buf_size,
 	};
 
-	int rc = http_client_req(sock, &req, CONFIG_LLSS_HTTP_TIMEOUT_MS, &ctx);
+	int32_t rc = http_client_req(sock, &req, CONFIG_LLSS_HTTP_TIMEOUT_MS, &ctx);
 	int64_t req_done_ms = k_uptime_get();
 
-	LOG_INF("LLSS req done: %s %s rc=%d http=%d bytes=%zu in %lld ms",
+	LOG_INF("LLSS req done: %s %s rc=%d http=%d bytes=%zu in %" PRIi64 " ms",
 		http_method_str(method), full_path, rc, ctx.http_status, ctx.len,
-		(long long)(req_done_ms - req_start_ms));
+		req_done_ms - req_start_ms);
 
 	if (owned_sock) {
 		int64_t close_start_ms = k_uptime_get();
 
 		LOG_INF("LLSS close start: %s", full_path);
 		zsock_close(sock);
-		LOG_INF("LLSS close done: %s in %lld ms", full_path,
-			(long long)(k_uptime_get() - close_start_ms));
+		LOG_INF("LLSS close done: %s in %" PRIi64 " ms", full_path,
+			k_uptime_get() - close_start_ms);
 	} else if (rc < 0) {
 		/* Shared session socket is broken — invalidate it so the next
 		 * call in this job will fall back to opening a fresh one. */
@@ -661,7 +663,7 @@ int llss_session_open(void)
 
 	session_sock = open_tls_socket();
 	if (session_sock < 0) {
-		int err = session_sock;
+		int32_t err = session_sock;
 
 		session_sock = -1;
 		return err;
@@ -704,10 +706,10 @@ struct reg_resp {
 };
 
 static const struct json_obj_descr reg_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct reg_resp, device_id,     JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct reg_resp, device_secret, JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct reg_resp, auth_status,   JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct reg_resp, message,       JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct reg_resp, device_id,     JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct reg_resp, device_secret, JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct reg_resp, auth_status,   JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct reg_resp, message,       JSON_TOK_STRING_BUF),
 };
 
 /* --- DeviceAuthResponse (token endpoint) --- */
@@ -719,10 +721,10 @@ struct auth_resp {
 };
 
 static const struct json_obj_descr auth_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct auth_resp, device_id,     JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct auth_resp, refresh_token, JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct auth_resp, auth_status,   JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct auth_resp, message,       JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct auth_resp, device_id,     JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct auth_resp, refresh_token, JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct auth_resp, auth_status,   JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct auth_resp, message,       JSON_TOK_STRING_BUF),
 };
 
 /* --- TokenRefreshResponse --- */
@@ -732,8 +734,8 @@ struct token_resp {
 };
 
 static const struct json_obj_descr token_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct token_resp, access_token, JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct token_resp, token_type,   JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct token_resp, access_token, JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct token_resp, token_type,   JSON_TOK_STRING_BUF),
 };
 
 /* --- RefreshRenewalResponse --- */
@@ -742,7 +744,7 @@ struct renewal_resp {
 };
 
 static const struct json_obj_descr renewal_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct renewal_resp, refresh_token, JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct renewal_resp, refresh_token, JSON_TOK_STRING_BUF),
 };
 
 /* --- DeviceStateResponse --- */
@@ -750,13 +752,13 @@ struct state_resp {
 	char action[16];
 	char frame_id[64];
 	char active_instance_id[64];
-	int  poll_after_ms;
+	int32_t poll_after_ms;
 };
 
 static const struct json_obj_descr state_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct state_resp, action,             JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct state_resp, frame_id,           JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct state_resp, active_instance_id, JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, action,             JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, frame_id,           JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, active_instance_id, JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct state_resp, poll_after_ms,      JSON_TOK_NUMBER),
 };
 
@@ -764,15 +766,15 @@ static const struct json_obj_descr state_resp_descr[] = {
 struct input_resp {
 	char status[16];
 	char frame_id[64];
-	int  poll_after_ms;
+	int32_t poll_after_ms;
 	char message[128];
 };
 
 static const struct json_obj_descr input_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct input_resp, status,        JSON_TOK_STRING),
-	JSON_OBJ_DESCR_PRIM(struct input_resp, frame_id,      JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, status,        JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, frame_id,      JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, poll_after_ms, JSON_TOK_NUMBER),
-	JSON_OBJ_DESCR_PRIM(struct input_resp, message,       JSON_TOK_STRING),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, message,       JSON_TOK_STRING_BUF),
 };
 
 /* =========================================================================
@@ -806,7 +808,7 @@ int llss_client_init(void)
 		return 0;
 	}
 
-	int rc = parse_server_url(CONFIG_LLSS_SERVER_URL);
+	int32_t rc = parse_server_url(CONFIG_LLSS_SERVER_URL);
 
 	if (rc) {
 		return rc;
@@ -851,7 +853,7 @@ int llss_register(const char *hardware_id,
 		 CONFIG_LLSS_TOP_STRIP_HEIGHT,
 		 CONFIG_LLSS_BOTTOM_STRIP_HEIGHT);
 
-	int http_status = do_request(HTTP_POST, "/auth/devices/register",
+	int32_t http_status = do_request(HTTP_POST, "/auth/devices/register",
 				     NULL, body, "application/json",
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
@@ -867,7 +869,7 @@ int llss_register(const char *hardware_id,
 	}
 
 	struct reg_resp resp = {0};
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				reg_resp_descr, ARRAY_SIZE(reg_resp_descr),
@@ -907,7 +909,7 @@ int llss_authenticate(const char *hardware_id, const char *device_secret,
 		 CONFIG_LLSS_TOP_STRIP_HEIGHT,
 		 CONFIG_LLSS_BOTTOM_STRIP_HEIGHT);
 
-	int http_status = do_request(HTTP_POST, "/auth/devices/token",
+	int32_t http_status = do_request(HTTP_POST, "/auth/devices/token",
 				     NULL, body, "application/json",
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
@@ -928,7 +930,7 @@ int llss_authenticate(const char *hardware_id, const char *device_secret,
 	}
 
 	struct auth_resp resp = {0};
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				auth_resp_descr, ARRAY_SIZE(auth_resp_descr),
@@ -955,7 +957,7 @@ int llss_refresh_access_token(const char *refresh_token,
 
 	make_bearer_header(refresh_token, auth_hdr, sizeof(auth_hdr));
 
-	int http_status = do_request(HTTP_POST, "/auth/devices/refresh",
+	int32_t http_status = do_request(HTTP_POST, "/auth/devices/refresh",
 				     auth_hdr, NULL, NULL,
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
@@ -974,7 +976,7 @@ int llss_refresh_access_token(const char *refresh_token,
 	}
 
 	struct token_resp resp = {0};
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				token_resp_descr, ARRAY_SIZE(token_resp_descr),
@@ -999,7 +1001,7 @@ int llss_renew_refresh_token(const char *access_token,
 
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
-	int http_status = do_request(HTTP_POST, "/auth/devices/renew-refresh",
+	int32_t http_status = do_request(HTTP_POST, "/auth/devices/renew-refresh",
 				     auth_hdr, NULL, NULL,
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
@@ -1018,7 +1020,7 @@ int llss_renew_refresh_token(const char *access_token,
 	}
 
 	struct renewal_resp resp = {0};
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				renewal_resp_descr,
@@ -1054,7 +1056,7 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
-	int http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
+	int32_t http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
 
@@ -1075,7 +1077,7 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 		.poll_after_ms = CONFIG_LLSS_POLL_INTERVAL_MS,
 	};
 
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				state_resp_descr,
@@ -1093,6 +1095,7 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 	} else if (strcmp(resp.action, "SLEEP") == 0) {
 		state_out->action = LLSS_ACTION_SLEEP;
 	} else {
+		LOG_WRN("Unknown state action: %s", resp.action);
 		state_out->action = LLSS_ACTION_NOOP;
 	}
 
@@ -1102,6 +1105,12 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 	state_out->poll_after_ms = CLAMP(resp.poll_after_ms,
 					 CONFIG_LLSS_MIN_POLL_MS,
 					 CONFIG_LLSS_MAX_POLL_MS);
+
+	LOG_INF("State: action=%s mapped=%d frame_id=%s poll_after_ms=%d",
+		resp.action[0] ? resp.action : "(empty)",
+		state_out->action,
+		state_out->frame_id[0] ? state_out->frame_id : "(none)",
+		state_out->poll_after_ms);
 	return 0;
 }
 
@@ -1121,7 +1130,7 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 	/* HTTP body lands directly in the caller's buffer (a display pipeline
 	 * slot) — no intermediate copy. */
 	size_t body_len = 0;
-	int http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
+	int32_t http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
 				     dst, dst_size, &body_len);
 
 	if (http_status < 0) {
@@ -1164,7 +1173,7 @@ int llss_fetch_pressed_strip(const char *access_token, const char *device_id,
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
 	size_t body_len = 0;
-	int http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
+	int32_t http_status = do_request(HTTP_GET, path, auth_hdr, NULL, NULL,
 				     dst, dst_size, &body_len);
 
 	if (http_status < 0) {
@@ -1226,7 +1235,7 @@ int llss_send_input(const char *access_token, const char *device_id,
 		 "\"timestamp\":\"%s\"}",
 		 button_name, event_type, ts);
 
-	int http_status = do_request(HTTP_POST, path, auth_hdr,
+	int32_t http_status = do_request(HTTP_POST, path, auth_hdr,
 				     body, "application/json",
 				     json_recv_buf, sizeof(json_recv_buf),
 				     NULL);
@@ -1248,7 +1257,7 @@ int llss_send_input(const char *access_token, const char *device_id,
 		.poll_after_ms = CONFIG_LLSS_POLL_INTERVAL_MS,
 	};
 
-	int rc = json_obj_parse((char *)json_recv_buf,
+	int32_t rc = json_obj_parse((char *)json_recv_buf,
 				strnlen((char *)json_recv_buf,
 					sizeof(json_recv_buf)),
 				input_resp_descr, ARRAY_SIZE(input_resp_descr),

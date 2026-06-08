@@ -57,6 +57,20 @@ void ui_init(void);
 void ui_log_push(const char *msg);
 
 /**
+ * Update the user-facing placeholder shown on the main screen while no
+ * server frame is available yet.
+ *
+ * Passing NULL or an empty string for icon/title/body leaves that field blank.
+ */
+void ui_server_status_show(const char *icon, const char *title,
+			   const char *body);
+
+/**
+ * Hide the main-screen placeholder so the latest server frame is shown.
+ */
+void ui_server_status_hide(void);
+
+/**
  * Zero-copy frame producer API (replaces queue_display_frame).
  *
  * Fetch the next frame directly into the buffer returned here, then call

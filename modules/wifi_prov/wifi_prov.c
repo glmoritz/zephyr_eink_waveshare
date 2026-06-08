@@ -1,6 +1,7 @@
 #include "wifi_prov.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,7 +32,7 @@ static void log_dns_servers(void)
 	char buf[NET_IPV6_ADDR_LEN];
 	bool found = false;
 
-	for (int i = 0; i < ARRAY_SIZE(ctx->servers); i++) {
+	for (int32_t i = 0; i < ARRAY_SIZE(ctx->servers); i++) {
 		const struct sockaddr *sa = &ctx->servers[i].dns_server;
 
 		if (sa->sa_family == AF_INET || sa->sa_family == AF_INET6) {
@@ -57,9 +58,9 @@ static void ensure_dns_context_active(struct net_if *iface)
 	struct dns_resolve_context *ctx = dns_resolve_get_default();
 	struct sockaddr server_addrs[CONFIG_DNS_RESOLVER_MAX_SERVERS];
 	const struct sockaddr *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
-	int ifaces[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
-	int count = 0;
-	int rc;
+	int32_t ifaces[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
+	int32_t count = 0;
+	int32_t rc;
 
 	if (!ctx || !iface) {
 		return;
@@ -69,7 +70,7 @@ static void ensure_dns_context_active(struct net_if *iface)
 		return;
 	}
 
-	for (int i = 0; i < ARRAY_SIZE(ctx->servers) && count < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
+	for (int32_t i = 0; i < ARRAY_SIZE(ctx->servers) && count < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
 		const struct sockaddr *server = &ctx->servers[i].dns_server;
 
 		if (server->sa_family != AF_INET && server->sa_family != AF_INET6) {
@@ -133,7 +134,7 @@ static int wifi_settings_set(const char *key, size_t len,
 
 	r = read_cb(cb_arg, dst, dst_len - 1);
 	if (r < 0) {
-		return (int)r;
+		return (int32_t)r;
 	}
 
 	dst[r] = '\0';
@@ -166,7 +167,7 @@ static bool creds_load(char *ssid, size_t ssid_sz, char *pass, size_t pass_sz)
 
 static void creds_save(const char *ssid, const char *pass)
 {
-	int rc;
+	int32_t rc;
 
 	rc = settings_save_one("wifi/ssid", ssid, strlen(ssid) + 1);
 	if (rc) {
@@ -313,7 +314,7 @@ static void ipv6_event_handler(struct net_mgmt_event_callback *cb,
 	}
 
 	/* Walk unicast addresses looking for a preferred global address */
-	for (int i = 0; i < NET_IF_MAX_IPV6_ADDR; i++) {
+	for (int32_t i = 0; i < NET_IF_MAX_IPV6_ADDR; i++) {
 		if (!ipv6->unicast[i].is_used) {
 			continue;
 		}
@@ -381,7 +382,7 @@ static int sta_connect(const char *ssid, const char *pass)
 		params.psk_length = strlen(pass);
 	}
 
-	int ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params,
+	int32_t ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params,
 			   sizeof(params));
 	if (ret) {
 		LOG_ERR("NET_REQUEST_WIFI_CONNECT: %d", ret);
@@ -493,7 +494,7 @@ static int ap_enable(const char *ssid)
 		.band = WIFI_FREQ_BAND_2_4_GHZ,
 	};
 
-	int ret = net_mgmt(NET_REQUEST_WIFI_AP_ENABLE, iface, &ap_params,
+	int32_t ret = net_mgmt(NET_REQUEST_WIFI_AP_ENABLE, iface, &ap_params,
 			   sizeof(ap_params));
 	if (ret) {
 		LOG_ERR("NET_REQUEST_WIFI_AP_ENABLE: %d", ret);
@@ -588,8 +589,8 @@ static void url_decode(char *s)
 		if (*s == '+') {
 			*d++ = ' ';
 			s++;
-		} else if (*s == '%' && isxdigit((unsigned char)s[1]) &&
-			   isxdigit((unsigned char)s[2])) {
+		} else if (*s == '%' && isxdigit((uint8_t)s[1]) &&
+			   isxdigit((uint8_t)s[2])) {
 			char hex[3] = {s[1], s[2], '\0'};
 			*d++ = (char)strtol(hex, NULL, 16);
 			s += 3;
@@ -638,7 +639,7 @@ static void captive_portal_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
-	int srv, client;
+	int32_t srv, client;
 	struct sockaddr_in srv_addr;
 
 	srv = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -647,7 +648,7 @@ static void captive_portal_thread(void *p1, void *p2, void *p3)
 		return;
 	}
 
-	int opt = 1;
+	int32_t opt = 1;
 	zsock_setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
 	memset(&srv_addr, 0, sizeof(srv_addr));
@@ -682,7 +683,7 @@ static void captive_portal_thread(void *p1, void *p2, void *p3)
 		tv.tv_sec = 3;
 		zsock_setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-		int len = zsock_recv(client, http_buf, sizeof(http_buf) - 1, 0);
+		ssize_t len = zsock_recv(client, http_buf, sizeof(http_buf) - 1, 0);
 		if (len <= 0) {
 			zsock_close(client);
 			continue;

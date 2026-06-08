@@ -1,5 +1,6 @@
 #include "llss_storage.h"
 
+#include <stdint.h>
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -94,7 +95,7 @@ int llss_storage_init(void)
 	memset(cache_access_token,  0, sizeof(cache_access_token));
 	rtc_cache_magic = 0;
 
-	int rc = settings_register(&llss_handler);
+	int32_t rc = settings_register(&llss_handler);
 
 	if (rc && rc != -EEXIST) {
 		LOG_ERR("settings_register: %d", rc);
@@ -129,7 +130,7 @@ int llss_storage_load(char *device_id, char *device_secret,
 int llss_storage_save_device(const char *device_id,
 			     const char *device_secret)
 {
-	int rc;
+	int32_t rc;
 
 	rc = settings_save_one(KEY_DEVICE_ID, device_id, strlen(device_id));
 	if (rc) {
@@ -154,7 +155,7 @@ int llss_storage_save_device(const char *device_id,
 int llss_storage_save_tokens(const char *refresh_token,
 			     const char *access_token)
 {
-	int rc;
+	int32_t rc;
 
 	rc = settings_save_one(KEY_REFRESH_TOKEN, refresh_token,
 			       strlen(refresh_token));
@@ -179,7 +180,7 @@ int llss_storage_save_tokens(const char *refresh_token,
 
 int llss_storage_save_access_token(const char *access_token)
 {
-	int rc = settings_save_one(KEY_ACCESS_TOKEN, access_token,
+	int32_t rc = settings_save_one(KEY_ACCESS_TOKEN, access_token,
 				   strlen(access_token));
 
 	if (rc) {

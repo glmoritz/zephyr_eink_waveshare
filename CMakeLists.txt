@@ -19,9 +19,11 @@ target_sources(app PRIVATE
     src/main.c
     src/system_flags.c
     src/input_events.c
+    src/shtc3_thread.c
     src/display_thread.c
     src/device_ui.c
     src/dseg_bold_italic_200_compressed.c
+    src/material_design_40.c
     src/llss_thread.c
     src/llss_storage.c
     src/llss_client.c

@@ -14,7 +14,9 @@
  *               ←HL_LEFT/RIGHT→ ALARM → (wrap)
  */
 
+#include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -30,6 +32,8 @@ LV_FONT_DECLARE(dseg_bold_italic_200);
 
 #include "device_ui.h"
 #include "display_thread.h"
+#include "material_icons.h"
+#include "shtc3_thread.h"
 #include "system_flags.h"
 #include "wifi_prov.h"
 
@@ -52,8 +56,8 @@ struct log_entry {
 };
 
 static struct log_entry log_buf[LOG_ENTRIES];
-static int log_next;
-static int log_count;
+static int32_t log_next;
+static int32_t log_count;
 static K_MUTEX_DEFINE(log_mutex);
 
 /* Pre-allocated render buffer — avoids stack pressure in render thread. */
@@ -64,11 +68,11 @@ static char log_text_buf[LOG_TEXT_MAX + 1];
  * Alarm / timezone state
  * ========================================================================= */
 
-static int  alarm_hour;
-static int  alarm_min;
+static int32_t  alarm_hour;
+static int32_t  alarm_min;
 static bool alarm_enabled;
 static bool clock_24h = true;
-static int  tz_offset;        /* display time = UTC + tz_offset hours */
+static int32_t  tz_offset;        /* display time = UTC + tz_offset hours */
 static bool alarm_fired;      /* latched within the trigger minute */
 static bool settings_ready;
 static K_MUTEX_DEFINE(ui_state_mutex);
@@ -85,7 +89,7 @@ enum dev_screen {
 	SCR_ALARM,
 };
 
-static atomic_t active_scr = ATOMIC_INIT(SCR_CLOCK);
+static atomic_t active_scr = ATOMIC_INIT(SCR_MAIN);
 
 /* =========================================================================
  * LVGL objects
@@ -107,8 +111,17 @@ static lv_obj_t *clk_scr;
 static lv_obj_t *clk_date_lbl;
 static lv_obj_t *clk_time_bg_lbl;
 static lv_obj_t *clk_time_lbl;
+static lv_obj_t *clk_wifi_icon_lbl;
 static lv_obj_t *clk_status_lbl;
 static lv_obj_t *clk_power_lbl;
+
+struct clock_metric_widgets {
+	lv_obj_t *icon;
+	lv_obj_t *value;
+};
+
+static struct clock_metric_widgets clk_temp_widgets;
+static struct clock_metric_widgets clk_humidity_widgets;
 
 /* Alarm screen */
 static lv_obj_t *alm_scr;
@@ -191,7 +204,7 @@ static void fmt_ts(int64_t uptime_s, int64_t realtime_s,
 		snprintf(out, outlen, "%02d:%02d:%02d",
 			 tm.tm_hour, tm.tm_min, tm.tm_sec);
 	} else {
-		snprintf(out, outlen, "T+%llds", (long long)uptime_s);
+		snprintf(out, outlen, "T+%" PRIi64 "s", uptime_s);
 	}
 }
 
@@ -235,20 +248,20 @@ void device_ui_log_push(const char *msg)
 
 static void render_log_locked(void)
 {
-	int pos = 0;
+	int32_t pos = 0;
 	char ts[LOG_TS_LEN + 2];
 
 	k_mutex_lock(&log_mutex, K_FOREVER);
 
-	int n = log_count;
-	int start = (log_count < LOG_ENTRIES) ? 0 : log_next;
+	int32_t n = log_count;
+	int32_t start = (log_count < LOG_ENTRIES) ? 0 : log_next;
 
-	for (int i = 0; i < n && pos < LOG_TEXT_MAX; i++) {
-		int idx = (start + i) % LOG_ENTRIES;
+	for (int32_t i = 0; i < n && pos < LOG_TEXT_MAX; i++) {
+		int32_t idx = (start + i) % LOG_ENTRIES;
 		const struct log_entry *e = &log_buf[idx];
 
 		fmt_ts(e->uptime_s, e->realtime_s, ts, sizeof(ts));
-		int w = snprintf(log_text_buf + pos, LOG_TEXT_MAX - pos,
+		int32_t w = snprintf(log_text_buf + pos, LOG_TEXT_MAX - pos,
 				 "%s > %s\n", ts, e->msg);
 		if (w > 0) {
 			pos += w;
@@ -265,7 +278,7 @@ static void render_log_locked(void)
 	}
 
 	lv_label_set_text(log_content, n ? log_text_buf : "(no messages)");
-	lv_screen_load(clk_scr);
+	lv_screen_load(log_scr);
 }
 
 static void render_net_locked(void)
@@ -288,7 +301,7 @@ static const char *const month_name[12] = {
 	"July", "August", "September", "October", "November", "December",
 };
 
-static void format_hhmm(int hour24, int min, bool use_24h,
+static void format_hhmm(int32_t hour24, int32_t min, bool use_24h,
 			char *time_buf, size_t time_len,
 			char *suffix_buf, size_t suffix_len)
 {
@@ -298,7 +311,7 @@ static void format_hhmm(int hour24, int min, bool use_24h,
 		return;
 	}
 
-	int hour12 = hour24 % 12;
+	int32_t hour12 = hour24 % 12;
 
 	if (hour12 == 0) {
 		hour12 = 12;
@@ -334,17 +347,62 @@ static void update_clock_status_locked(void)
 	char status_buf[24] = "";
 
 	if (flags & SYS_FLAG_WIFI_READY) {
-		strncpy(status_buf, LV_SYMBOL_WIFI, sizeof(status_buf) - 1);
-		status_buf[sizeof(status_buf) - 1] = '\0';
+		lv_label_set_text(clk_wifi_icon_lbl, ICON_WIFI);
+		lv_obj_remove_flag(clk_wifi_icon_lbl, LV_OBJ_FLAG_HIDDEN);
 		if (flags & SYS_FLAG_LLSS_AUTHORIZED) {
-			strncat(status_buf, " ", sizeof(status_buf) - strlen(status_buf) - 1);
-			strncat(status_buf, LV_SYMBOL_OK,
-				sizeof(status_buf) - strlen(status_buf) - 1);
+			strncpy(status_buf, LV_SYMBOL_OK, sizeof(status_buf) - 1);
+			status_buf[sizeof(status_buf) - 1] = '\0';
 		}
+	} else {
+		lv_obj_add_flag(clk_wifi_icon_lbl, LV_OBJ_FLAG_HIDDEN);
 	}
 
 	lv_label_set_text(clk_status_lbl, status_buf);
 	lv_label_set_text(clk_power_lbl, "");
+}
+
+static void set_clock_metric_visible(struct clock_metric_widgets *widgets,
+					 bool visible)
+{
+	if (visible) {
+		lv_obj_remove_flag(widgets->icon, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_remove_flag(widgets->value, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(widgets->icon, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_flag(widgets->value, LV_OBJ_FLAG_HIDDEN);
+	}
+}
+
+static void update_clock_sensor_locked(void)
+{
+	struct shtc3_data data;
+	char value_buf[24];
+
+	if (!shtc3_get_latest(&data) || !data.has_sample) {
+		set_clock_metric_visible(&clk_temp_widgets, false);
+		set_clock_metric_visible(&clk_humidity_widgets, false);
+		return;
+	}
+
+	if (data.status != SHTC3_DATA_VALID &&
+	    data.status != SHTC3_DATA_SIMULATED) {
+		set_clock_metric_visible(&clk_temp_widgets, false);
+		set_clock_metric_visible(&clk_humidity_widgets, false);
+		return;
+	}
+
+	snprintk(value_buf, sizeof(value_buf), "%d.%01d C",
+		 data.temperature_centi_c / 100,
+		 abs((data.temperature_centi_c / 10) % 10));
+	lv_label_set_text(clk_temp_widgets.value, value_buf);
+
+	snprintk(value_buf, sizeof(value_buf), "%d.%01d %%",
+		 data.humidity_centi_pct / 100,
+		 abs((data.humidity_centi_pct / 10) % 10));
+	lv_label_set_text(clk_humidity_widgets.value, value_buf);
+
+	set_clock_metric_visible(&clk_temp_widgets, true);
+	set_clock_metric_visible(&clk_humidity_widgets, true);
 }
 
 static void render_clk_locked(void)
@@ -376,6 +434,7 @@ static void render_clk_locked(void)
 	lv_label_set_text(clk_date_lbl,  date_buf);
 	lv_label_set_text(clk_time_lbl, time_buf);
 	update_clock_status_locked();
+	update_clock_sensor_locked();
 	lv_screen_load(clk_scr);
 }
 
@@ -608,7 +667,7 @@ static lv_color_t c_gray(uint8_t v)
 }
 
 /* Bare rectangle child — no border/padding/scroll, opaque fill. */
-static lv_obj_t *panel(lv_obj_t *parent, int w, int h)
+static lv_obj_t *panel(lv_obj_t *parent, int32_t w, int32_t h)
 {
 	lv_obj_t *o = lv_obj_create(parent);
 
@@ -635,9 +694,9 @@ static void build_header(lv_obj_t *scr, const char *title)
 	static const char *const top_labels[8] = {
 		NULL, NULL, NULL, NULL, "<", ">", "ENT", "ESC"
 	};
-	const int cw = SCR_W / 8;
-	const int gap = 6;
-	const int slot_h = 24;
+	const int32_t cw = SCR_W / 8;
+	const int32_t gap = 6;
+	const int32_t slot_h = 24;
 	lv_obj_t *bar = panel(scr, SCR_W, HDR_H);
 
 	lv_obj_set_pos(bar, 0, 0);
@@ -650,7 +709,7 @@ static void build_header(lv_obj_t *scr, const char *title)
 	lv_label_set_text(t, title);
 	lv_obj_align(t, LV_ALIGN_LEFT_MID, 20, 0);
 
-	for (int i = 0; i < 8; i++) {
+	for (int32_t i = 0; i < 8; i++) {
 		const char *label = top_labels[i];
 		lv_obj_t *slot;
 
@@ -679,15 +738,15 @@ static void build_header(lv_obj_t *scr, const char *title)
 /* Bottom strip of 8 key-caps aligned under the physical BTN_1..8. */
 static void build_softkeys(lv_obj_t *scr, const char *const labels[8])
 {
-	const int cw  = SCR_W / 8; /* 100 px per key */
-	const int gap = 6;
+	const int32_t cw  = SCR_W / 8; /* 100 px per key */
+	const int32_t gap = 6;
 
 	lv_obj_t *strip = panel(scr, SCR_W, FTR_H);
 
 	lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, 0);
 	lv_obj_set_style_bg_color(strip, c_paper(), 0);
 
-	for (int i = 0; i < 8; i++) {
+	for (int32_t i = 0; i < 8; i++) {
 		bool used = labels[i] && labels[i][0];
 		lv_obj_t *cap = panel(strip, cw - gap, FTR_H - gap * 2);
 
@@ -732,7 +791,7 @@ static void build_log_scr(void)
 	lv_label_set_text(log_content, "Booting...");
 }
 
-static void build_field(lv_obj_t *scr, const char *caption, int y,
+static void build_field(lv_obj_t *scr, const char *caption, int32_t y,
 			lv_obj_t **value_out)
 {
 	lv_obj_t *cap = lv_label_create(scr);
@@ -767,6 +826,11 @@ static void build_net_scr(void)
 
 static void build_clk_scr(void)
 {
+	int32_t metrics_band_top;
+	int32_t metrics_band_bottom;
+	int32_t metrics_center_y;
+	int32_t metrics_icon_top;
+
 	clk_scr = new_screen();
 	build_header(clk_scr, "Clock");
 
@@ -794,18 +858,64 @@ static void build_clk_scr(void)
 	lv_obj_set_style_text_letter_space(clk_time_lbl, 0, 0);
 	lv_label_set_text(clk_time_lbl, "--:--");
 	lv_obj_align_to(clk_time_lbl, clk_time_bg_lbl, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_update_layout(clk_scr);
+	metrics_band_top = lv_obj_get_y(clk_time_lbl) + lv_obj_get_height(clk_time_lbl);
+	metrics_band_bottom = SCR_H;
+	metrics_center_y = metrics_band_top + (metrics_band_bottom - metrics_band_top) / 2;
+
+	clk_wifi_icon_lbl = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_wifi_icon_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_wifi_icon_lbl, &material_design_40, 0);
+	lv_label_set_text(clk_wifi_icon_lbl, "");
+	lv_obj_add_flag(clk_wifi_icon_lbl, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_align(clk_wifi_icon_lbl, LV_ALIGN_TOP_RIGHT, -44, CONTENT_Y + 13);
 
 	clk_status_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_status_lbl, c_ink(), 0);
 	lv_obj_set_style_text_font(clk_status_lbl, &lv_font_montserrat_14, 0);
 	lv_label_set_text(clk_status_lbl, "");
-	lv_obj_align(clk_status_lbl, LV_ALIGN_TOP_RIGHT, -24, CONTENT_Y + 14);
+	lv_obj_align(clk_status_lbl, LV_ALIGN_TOP_RIGHT, -20, CONTENT_Y + 14);
 
 	clk_power_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_power_lbl, c_gray(0x66), 0);
 	lv_obj_set_style_text_font(clk_power_lbl, &lv_font_montserrat_14, 0);
 	lv_label_set_text(clk_power_lbl, "");
 	lv_obj_align(clk_power_lbl, LV_ALIGN_TOP_RIGHT, -94, CONTENT_Y + 14);
+
+	clk_temp_widgets.icon = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_temp_widgets.icon, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_temp_widgets.icon, &material_design_40, 0);
+	lv_label_set_text(clk_temp_widgets.icon, ICON_TEMP);
+	lv_obj_add_flag(clk_temp_widgets.icon, LV_OBJ_FLAG_HIDDEN);
+
+	clk_temp_widgets.value = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_temp_widgets.value, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_temp_widgets.value, &lv_font_montserrat_28, 0);
+	lv_label_set_text(clk_temp_widgets.value, "");
+	lv_obj_add_flag(clk_temp_widgets.value, LV_OBJ_FLAG_HIDDEN);
+
+	clk_humidity_widgets.icon = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_humidity_widgets.icon, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_humidity_widgets.icon, &material_design_40, 0);
+	lv_label_set_text(clk_humidity_widgets.icon, ICON_HUMIDITY);
+	lv_obj_add_flag(clk_humidity_widgets.icon, LV_OBJ_FLAG_HIDDEN);
+
+	clk_humidity_widgets.value = lv_label_create(clk_scr);
+	lv_obj_set_style_text_color(clk_humidity_widgets.value, c_ink(), 0);
+	lv_obj_set_style_text_font(clk_humidity_widgets.value, &lv_font_montserrat_28, 0);
+	lv_label_set_text(clk_humidity_widgets.value, "");
+	lv_obj_add_flag(clk_humidity_widgets.value, LV_OBJ_FLAG_HIDDEN);
+
+	lv_obj_update_layout(clk_scr);
+	metrics_icon_top = metrics_center_y - lv_obj_get_height(clk_temp_widgets.icon) / 2;
+	lv_obj_align(clk_temp_widgets.icon, LV_ALIGN_TOP_MID, -118, metrics_icon_top);
+	lv_obj_align_to(clk_humidity_widgets.value, clk_humidity_widgets.icon,
+			LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+	lv_obj_align_to(clk_temp_widgets.value, clk_temp_widgets.icon,
+			LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+	lv_obj_align(clk_humidity_widgets.icon, LV_ALIGN_TOP_MID, 26, metrics_icon_top);
+	lv_obj_align_to(clk_humidity_widgets.value, clk_humidity_widgets.icon,
+			LV_ALIGN_OUT_RIGHT_MID, 8, 0);
 }
 
 static void build_alarm_scr(void)
@@ -868,9 +978,9 @@ static k_timeout_t ui_next_tick(void)
 
 	if ((sys_flag_get() & SYS_FLAG_TIME_VALID) &&
 	    sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) == 0) {
-		int into_min_ms = (int)(ts.tv_sec % 60) * 1000 +
-				  (int)(ts.tv_nsec / 1000000);
-		int to_boundary = 60000 - into_min_ms + 100; /* +100ms margin */
+		int32_t into_min_ms = (int32_t)(ts.tv_sec % 60) * 1000 +
+				  (int32_t)(ts.tv_nsec / 1000000);
+		int32_t to_boundary = 60000 - into_min_ms + 100; /* +100ms margin */
 
 		return K_MSEC(to_boundary);
 	}
@@ -889,7 +999,7 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 		&ui_signal);
 
 	while (true) {
-		int rc = k_poll(&evt, 1, ui_next_tick());
+		int32_t rc = k_poll(&evt, 1, ui_next_tick());
 		bool signaled = (rc == 0);
 
 		k_poll_signal_reset(&ui_signal);
@@ -953,7 +1063,8 @@ void device_ui_init(lv_obj_t *main_scr)
 	build_clk_scr();
 	build_alarm_scr();
 
-	lv_screen_load(log_scr);
+	atomic_set(&active_scr, SCR_MAIN);
+	lv_screen_load(main_scr_ref);
 }
 
 void device_ui_show_main(void)

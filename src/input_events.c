@@ -3,6 +3,7 @@
  * keycodes, logical buttons (enum), and LLSS wire strings.
  */
 
+#include <stdint.h>
 #include <string.h>
 
 #include <zephyr/input/input.h>
@@ -10,7 +11,7 @@
 #include "input_events.h"
 
 /* Logical button → Zephyr keycode.  Indexed by enum ui_btn. */
-static const int btn_keycode[UI_BTN_COUNT] = {
+static const int32_t btn_keycode[UI_BTN_COUNT] = {
 	[UI_BTN_1]        = INPUT_KEY_1,
 	[UI_BTN_2]        = INPUT_KEY_2,
 	[UI_BTN_3]        = INPUT_KEY_3,
@@ -43,7 +44,7 @@ static const char *const btn_name[UI_BTN_COUNT] = {
 
 enum ui_btn ui_btn_from_keycode(int keycode)
 {
-	for (int i = 0; i < UI_BTN_COUNT; i++) {
+	for (int32_t i = 0; i < UI_BTN_COUNT; i++) {
 		if (btn_keycode[i] == keycode) {
 			return (enum ui_btn)i;
 		}
@@ -61,7 +62,7 @@ int ui_btn_to_keycode(enum ui_btn btn)
 
 enum ui_btn ui_btn_from_name(const char *name)
 {
-	for (int i = 0; i < UI_BTN_COUNT; i++) {
+	for (int32_t i = 0; i < UI_BTN_COUNT; i++) {
 		if (btn_name[i] && strcmp(btn_name[i], name) == 0) {
 			return (enum ui_btn)i;
 		}

@@ -10,6 +10,8 @@
  * RTOS:  Zephyr 4.3.0
  */
 
+#include <stdint.h>
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
@@ -23,7 +25,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 int main(void)
 {
-	int rc;
+	int32_t rc;
 
 	k_msleep(1500); /* USB JTAG enumeration */
 

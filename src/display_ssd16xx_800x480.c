@@ -1,5 +1,6 @@
 #define DT_DRV_COMPAT custom_ssd16xx_800x480
 
+#include <stdint.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
@@ -106,7 +107,7 @@ struct custom_ssd16xx_data {
 static int custom_ssd16xx_busy_wait(const struct device *dev, uint32_t timeout_ms)
 {
 	const struct custom_ssd16xx_config *config = dev->config;
-	int pin = gpio_pin_get_dt(&config->busy_gpio);
+	int32_t pin = gpio_pin_get_dt(&config->busy_gpio);
 	uint32_t elapsed = 0;
 
 	if (pin < 0) {
@@ -137,7 +138,7 @@ static int custom_ssd16xx_write_cmd(const struct device *dev, uint8_t cmd,
 					const uint8_t *data, size_t len)
 {
 	const struct custom_ssd16xx_config *config = dev->config;
-	int err;
+	int32_t err;
 
 	err = custom_ssd16xx_busy_wait(dev, CUSTOM_SSD16XX_BUSY_TIMEOUT_MS);
 	if (err < 0) {
@@ -154,7 +155,7 @@ static int custom_ssd16xx_write_raw(const struct device *dev, uint8_t cmd,
 					const uint8_t *data, size_t len)
 {
 	const struct custom_ssd16xx_config *config = dev->config;
-	int err = mipi_dbi_command_write(config->mipi_dev, &config->dbi_config, cmd, data, len);
+	int32_t err = mipi_dbi_command_write(config->mipi_dev, &config->dbi_config, cmd, data, len);
 
 	mipi_dbi_release(config->mipi_dev, &config->dbi_config);
 	return err;
@@ -164,7 +165,7 @@ static int custom_ssd16xx_panel_init(const struct device *dev)
 {
 	const struct custom_ssd16xx_config *config = dev->config;
 	uint8_t data[8];
-	int err;
+	int32_t err;
 
 	err = mipi_dbi_reset(config->mipi_dev, 10);
 	if (err < 0) {
@@ -265,7 +266,7 @@ static int custom_ssd16xx_blanking_on(const struct device *dev)
 static int custom_ssd16xx_reset_ram_ptr(const struct device *dev)
 {
 	uint8_t tmp[2];
-	int err;
+	int32_t err;
 
 	tmp[0] = 0;
 	tmp[1] = 0;
@@ -294,7 +295,7 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 {
 	struct custom_ssd16xx_data *data = dev->data;
 	uint8_t tmp[2];
-	int err;
+	int32_t err;
 
 	err = custom_ssd16xx_reset_ram_ptr(dev);
 	if (err < 0) {
@@ -361,7 +362,7 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 {
 	struct custom_ssd16xx_data *data = dev->data;
 	uint8_t tmp[2];
-	int err;
+	int32_t err;
 
 	/* Previous frame -> RED RAM (the image the controller diffs against) */
 	err = custom_ssd16xx_reset_ram_ptr(dev);
@@ -510,11 +511,11 @@ static inline uint8_t quantise_2bpp(uint8_t luma, bool dither,
 		return luma >> 6;
 	}
 
-	int scaled = (int)luma * 3;          /* 0..765 = level*255 */
-	int base   = scaled / 255;           /* lower level 0..3 */
-	int frac   = scaled - base * 255;    /* 0..254 toward next level */
-	int thr    = bayer4[py & 3][px & 3] * 255 / 16; /* 0..239 */
-	int level  = base + (frac > thr ? 1 : 0);
+	int32_t scaled = (int32_t)luma * 3;          /* 0..765 = level*255 */
+	int32_t base   = scaled / 255;               /* lower level 0..3 */
+	int32_t frac   = scaled - base * 255;        /* 0..254 toward next level */
+	int32_t thr    = bayer4[py & 3][px & 3] * 255 / 16; /* 0..239 */
+	int32_t level  = base + (frac > thr ? 1 : 0);
 
 	return (uint8_t)(level > 3 ? 3 : level);
 }
@@ -551,7 +552,7 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 				 * a hard threshold preserves an already-dithered frame's
 				 * 0/255 instead of re-dithering it. */
 				if (dither) {
-					int thr = bayer4[py & 3][px & 3] * 16 + 8; /* 8..248 */
+					int32_t thr = bayer4[py & 3][px & 3] * 16 + 8; /* 8..248 */
 
 					g2 = (luma > thr) ? 0x3u : 0x0u;
 				} else {

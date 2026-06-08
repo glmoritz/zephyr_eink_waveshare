@@ -21,6 +21,7 @@
 #include "ntp_sync.h"
 #include "system_flags.h"
 
+#include <stdint.h>
 #include <time.h>
 
 #include <zephyr/drivers/rtc.h>
@@ -193,8 +194,8 @@ static int do_ntp_sync_once(void)
 	struct sockaddr_storage addr;
 	socklen_t addrlen;
 
-	int rc = resolve_ntp(CONFIG_LLSS_NTP_SERVER,
-			     (struct sockaddr *)&addr, &addrlen);
+	int32_t rc = resolve_ntp(CONFIG_LLSS_NTP_SERVER,
+				 (struct sockaddr *)&addr, &addrlen);
 
 	if (rc) {
 		LOG_WRN("NTP DNS resolve '%s' failed: %d",
@@ -223,7 +224,7 @@ static int do_ntp_sync_once(void)
 	}
 
 	if (device_is_ready(rtc_dev)) {
-		int wrc = rtc_set_time(rtc_dev, &rtc_t);
+		int32_t wrc = rtc_set_time(rtc_dev, &rtc_t);
 
 		if (wrc) {
 			LOG_WRN("rtc_set_time failed: %d", wrc);
@@ -258,7 +259,7 @@ static void ntp_thread_fn(void *a, void *b, void *c)
 		sys_flag_wait_all(SYS_FLAG_WIFI_READY, K_FOREVER);
 
 		sys_io_acquire();
-		int rc = do_ntp_sync_once();
+		int32_t rc = do_ntp_sync_once();
 		sys_io_release();
 
 		if (rc == 0) {

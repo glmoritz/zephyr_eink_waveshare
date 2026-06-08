@@ -11,6 +11,7 @@
  */
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -29,6 +30,7 @@
 #include "llss_client.h"
 #include "llss_storage.h"
 #include "llss_thread.h"
+#include "material_icons.h"
 #include "system_flags.h"
 #include "wifi_prov.h"
 
@@ -66,7 +68,7 @@ static char access_token[LLSS_TOKEN_MAX];
 static char hardware_id[16];
 static char last_frame_id[64];
 
-static int poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
+static int32_t poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
 
 /* =========================================================================
  * Button input
@@ -97,18 +99,18 @@ enum key_state {
 };
 
 struct key_slot {
-	int                       code;     /* 0 = free */
+	int32_t                   code;     /* 0 = free */
 	atomic_t                  state;
 	struct k_work_delayable   long_work;
 };
 
 static struct key_slot key_slots[KEY_SLOTS];
 
-static struct key_slot *find_slot(int code)
+static struct key_slot *find_slot(int32_t code)
 {
 	struct key_slot *free_slot = NULL;
 
-	for (int i = 0; i < KEY_SLOTS; i++) {
+	for (int32_t i = 0; i < KEY_SLOTS; i++) {
 		if (key_slots[i].code == code) {
 			return &key_slots[i];
 		}
@@ -122,7 +124,7 @@ static struct key_slot *find_slot(int code)
 	return free_slot;
 }
 
-static void enqueue_event(int code, enum ui_evt evt)
+static void enqueue_event(int32_t code, enum ui_evt evt)
 {
 	enum ui_btn btn = ui_btn_from_keycode(code);
 
@@ -153,7 +155,7 @@ static void long_press_handler(struct k_work *work)
 
 static int key_slots_init(void)
 {
-	for (int i = 0; i < KEY_SLOTS; i++) {
+	for (int32_t i = 0; i < KEY_SLOTS; i++) {
 		k_work_init_delayable(&key_slots[i].long_work, long_press_handler);
 		atomic_set(&key_slots[i].state, KEY_IDLE);
 	}
@@ -220,14 +222,14 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 		return -EINVAL;
 	}
 
-	int code = ui_btn_to_keycode(ui_btn_from_name(argv[1]));
+	int32_t code = ui_btn_to_keycode(ui_btn_from_name(argv[1]));
 
 	if (code < 0) {
 		shell_error(sh, "Unknown button: %s", argv[1]);
 		return -EINVAL;
 	}
 
-	int rc = input_report_key(NULL, code, 1, true, K_FOREVER);
+	int32_t rc = input_report_key(NULL, code, 1, true, K_FOREVER);
 
 	if (rc < 0) {
 		shell_error(sh, "input_report_key press failed: %d", rc);
@@ -289,18 +291,31 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 		LOG_INF("WiFi connecting: %s", info);
 		snprintf(msg, sizeof(msg), "WiFi connecting: %s", info);
 		ui_log_push(msg);
+		ui_server_status_show(ICON_WIFI,
+			"Connecting to Wi-Fi",
+			(info && info[0]) ? info : "Joining the saved network.");
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	case WIFI_PROV_CONNECTED:
 		LOG_INF("WiFi connected: %s", info);
 		snprintf(msg, sizeof(msg), "WiFi connected — IP: %s", info);
 		ui_log_push(msg);
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_SCHEDULE,
+				"Connected",
+				"Syncing time and preparing your first screen.");
+		}
 		sys_flag_clear(SYS_FLAG_WIFI_PROVISIONING);
 		sys_flag_set(SYS_FLAG_WIFI_READY);
 		break;
 	case WIFI_PROV_DISCONNECTED:
 		LOG_WRN("WiFi disconnected");
 		ui_log_push("WiFi disconnected — reconnecting...");
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_WARNING,
+				"Connection lost",
+				"Trying to reconnect to Wi-Fi.");
+		}
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		/* Tear down the held TLS session — the underlying TCP is dead.
 		 * The next iteration will block on SYS_FLAG_WIFI_READY at the
@@ -310,6 +325,9 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 	case WIFI_PROV_AP_ACTIVE:
 		snprintf(msg, sizeof(msg), "AP mode — connect to: %s", info);
 		ui_log_push(msg);
+		ui_server_status_show(ICON_WIFI_HOTSPOT,
+			"Set up Wi-Fi",
+			(info && info[0]) ? info : "Connect to the device access point to continue.");
 		sys_flag_clear(SYS_FLAG_WIFI_READY);
 		sys_flag_set(SYS_FLAG_WIFI_PROVISIONING);
 		break;
@@ -332,7 +350,7 @@ static int session_ensure(void)
 		return 0;
 	}
 
-	int rc = llss_session_open();
+	int32_t rc = llss_session_open();
 
 	if (rc == 0) {
 		session_open = true;
@@ -396,8 +414,11 @@ static void update_access_token(const char *token)
 static enum app_state do_register(void)
 {
 	ui_log_push("Connecting to server — registering device...");
+	ui_server_status_show(ICON_APP_REGISTER,
+		"Registering device",
+		"Connecting this device to the service.");
 
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		LOG_ERR("Session open failed: %d — retry in 5s", rc);
@@ -429,7 +450,7 @@ static enum app_state do_register(void)
 		 *   (b) the device be authorized as-is by the admin (we can't
 		 *       use it without the secret, but the record is valid). */
 		LOG_WRN("Already registered (409) — going to pending.");
-		ui_log_push("Already registered — waiting for admin");
+		ui_log_push("Device already registered — pending admin approval");
 		return STATE_WAITING_AUTHORIZATION;
 	}
 
@@ -441,7 +462,10 @@ static enum app_state do_register(void)
 
 static enum app_state do_wait_authorization(void)
 {
-	ui_log_push("Waiting for admin authorization...");
+	ui_log_push("Pending authorization - approve device in admin portal");
+	ui_server_status_show(ICON_PENDING,
+		"Approval required",
+		"Authorize this device in the admin portal to continue.");
 
 	/* If we reached WAITING without ever having a device_secret (most
 	 * likely we came here from a 409 on /register), there is nothing to
@@ -454,7 +478,7 @@ static enum app_state do_wait_authorization(void)
 		return STATE_REGISTERING;
 	}
 
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		k_msleep(10000);
@@ -494,11 +518,17 @@ static enum app_state do_wait_authorization(void)
 
 static enum app_state do_refresh(void)
 {
+	if (!last_frame_id[0]) {
+		ui_server_status_show(ICON_VPN_KEY,
+			"Signing in",
+			"Restoring access to your screen service.");
+	}
+
 	if (!refresh_token[0]) {
 		return STATE_AUTHENTICATING;
 	}
 
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		k_msleep(5000);
@@ -527,13 +557,16 @@ static enum app_state do_refresh(void)
 static enum app_state do_authenticate(void)
 {
 	ui_log_push("Authenticating...");
+	ui_server_status_show(ICON_LOCK_CLOCK,
+		"Checking access",
+		"Confirming this device is ready to receive screens.");
 
 	if (!device_secret[0]) {
 		LOG_ERR("No device_secret — re-registering");
 		return STATE_REGISTERING;
 	}
 
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		k_msleep(5000);
@@ -581,7 +614,7 @@ static enum app_state do_authenticate(void)
 
 static enum app_state do_send_input(const struct button_event *bev)
 {
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		k_msleep(5000);
@@ -615,7 +648,7 @@ static enum app_state do_send_input(const struct button_event *bev)
 
 static enum app_state do_poll(void)
 {
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		k_msleep(poll_interval_ms);
@@ -642,15 +675,35 @@ static enum app_state do_poll(void)
 	switch (state.action) {
 	case LLSS_ACTION_FETCH_FRAME:
 		if (state.frame_id[0]) {
+			ui_server_status_show(ICON_SYNC,
+				"Loading screen",
+				"Receiving the latest content from the server.");
+		}
+		if (state.frame_id[0]) {
 			strncpy(last_frame_id, state.frame_id,
 				sizeof(last_frame_id) - 1);
 			return STATE_FETCHING_FRAME;
 		}
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_SCREEN,
+				"Waiting for content",
+				"The device is online and waiting for its first screen.");
+		}
 		k_msleep(poll_interval_ms);
 		return STATE_POLLING;
 	case LLSS_ACTION_SLEEP:
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_MONITOR,
+				"Waiting for content",
+				"The device is online and waiting for its first screen.");
+		}
 		return STATE_SLEEPING;
 	default:
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_MONITOR,
+				"Waiting for content",
+				"The device is online and waiting for its first screen.");
+		}
 		k_msleep(poll_interval_ms);
 		return STATE_POLLING;
 	}
@@ -659,8 +712,11 @@ static enum app_state do_poll(void)
 static enum app_state do_fetch_frame(void)
 {
 	ui_log_push("Fetching frame...");
+	ui_server_status_show(ICON_SYNC,
+		"Loading screen",
+		"Receiving the latest content from the server.");
 
-	int rc = session_ensure();
+	int32_t rc = session_ensure();
 
 	if (rc < 0) {
 		return STATE_POLLING;
@@ -684,7 +740,7 @@ static enum app_state do_fetch_frame(void)
 	}
 
 	if (png_len > 0) {
-		int drc = display_frame_submit(png_len);
+		int32_t drc = display_frame_submit(png_len);
 
 		if (drc < 0) {
 			LOG_ERR("Frame submit failed: %d", drc);
@@ -717,7 +773,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	build_hardware_id();
 	LOG_INF("Hardware ID: %s", hardware_id);
 
-	int rc = llss_client_init();
+	int32_t rc = llss_client_init();
 
 	if (rc) {
 		LOG_ERR("llss_client_init: %d", rc);

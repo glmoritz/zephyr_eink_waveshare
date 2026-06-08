@@ -6,12 +6,13 @@
  * in device_ui.c and shares lvgl_mutex + ui_lvgl_flush().
  *
  * Boot sequence:
- *   1. ui_init() creates the main LVGL screen and hands it to device_ui,
- *      which immediately loads the log screen (console-style boot view).
- *   2. On the first server frame, display_png_frame_locked() switches back
- *      to the main screen.
- *   3. Subsequent frames update the main screen silently if device UI is open;
- *      exiting the device menu (ESC) reveals the latest frame.
+ *   1. ui_init() creates the main LVGL screen and a friendly placeholder.
+ *   2. device_ui builds the developer-facing menu screens, but the user
+ *      remains on the main screen unless they explicitly open the menu.
+ *   3. On the first server frame, display_png_frame_locked() replaces the
+ *      placeholder with live server content.
+ *   4. Subsequent frames update the main screen silently if device UI is
+ *      open; exiting the device menu (ESC) reveals the latest frame.
  */
 
 #include <stdio.h>
@@ -27,6 +28,7 @@
 
 #include "device_ui.h"
 #include "display_thread.h"
+#include "material_icons.h"
 #include "section_attrs.h"
 
 /* Custom panel driver is hardware-only; on native_sim the SDL display has no
@@ -88,6 +90,73 @@ K_MUTEX_DEFINE(lvgl_mutex);
 static lv_obj_t     *lvgl_main_scr;
 static lv_obj_t     *frame_img;
 static lv_image_dsc_t frame_dsc;
+static lv_obj_t     *main_status_wrap;
+static lv_obj_t     *main_status_icon;
+static lv_obj_t     *main_status_title;
+static lv_obj_t     *main_status_body;
+static void main_status_build_locked(void)
+{
+	main_status_wrap = lv_obj_create(lvgl_main_scr);
+	lv_obj_remove_style_all(main_status_wrap);
+	lv_obj_set_size(main_status_wrap, 800, 480);
+	lv_obj_clear_flag(main_status_wrap, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_set_style_bg_color(main_status_wrap, lv_color_white(), 0);
+	lv_obj_set_style_bg_opa(main_status_wrap, LV_OPA_COVER, 0);
+
+	main_status_icon = lv_label_create(main_status_wrap);
+	lv_obj_set_style_text_font(main_status_icon, &material_design_120, 0);
+	lv_obj_set_style_text_color(main_status_icon, lv_color_black(), 0);
+	lv_label_set_text(main_status_icon, ICON_NOTIFICATION);
+	lv_obj_align(main_status_icon, LV_ALIGN_TOP_MID, 0, 34);
+
+	main_status_title = lv_label_create(main_status_wrap);
+	lv_obj_set_width(main_status_title, 620);
+	lv_obj_set_style_text_font(main_status_title, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_color(main_status_title, lv_color_black(), 0);
+	lv_obj_set_style_text_align(main_status_title, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_long_mode(main_status_title, LV_LABEL_LONG_WRAP);
+	lv_label_set_text(main_status_title, "Starting device");
+	lv_obj_align(main_status_title, LV_ALIGN_TOP_MID, 0, 182);
+
+	main_status_body = lv_label_create(main_status_wrap);
+	lv_obj_set_width(main_status_body, 620);
+	lv_obj_set_style_text_font(main_status_body, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_color(main_status_body, lv_palette_main(LV_PALETTE_GREY), 0);
+	lv_obj_set_style_text_align(main_status_body, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_long_mode(main_status_body, LV_LABEL_LONG_WRAP);
+	lv_label_set_text(main_status_body,
+			  "Please wait while the device prepares its first screen.");
+	lv_obj_align(main_status_body, LV_ALIGN_TOP_MID, 0, 246);
+}
+
+static void main_status_set_locked(const char *icon, const char *title,
+				   const char *body)
+{
+	if (!main_status_wrap) {
+		main_status_build_locked();
+	}
+
+	lv_label_set_text(main_status_icon,
+			  (icon && icon[0]) ? icon : "");
+	lv_label_set_text(main_status_title,
+			  (title && title[0]) ? title : "");
+	lv_label_set_text(main_status_body,
+			  (body && body[0]) ? body : "");
+	lv_obj_clear_flag(main_status_wrap, LV_OBJ_FLAG_HIDDEN);
+	if (frame_img) {
+		lv_obj_add_flag(frame_img, LV_OBJ_FLAG_HIDDEN);
+	}
+}
+
+static void main_status_hide_locked(void)
+{
+	if (main_status_wrap) {
+		lv_obj_add_flag(main_status_wrap, LV_OBJ_FLAG_HIDDEN);
+	}
+	if (frame_img) {
+		lv_obj_clear_flag(frame_img, LV_OBJ_FLAG_HIDDEN);
+	}
+}
 
 /* =========================================================================
  * Public flush — shared with device_ui.c
@@ -145,7 +214,7 @@ static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 
 	if (first_frame) {
 		first_frame = false;
-		/* Exit boot log → show main screen */
+		/* Ensure the user lands on the main screen when first content arrives. */
 		device_ui_show_main();
 		lv_screen_load(lvgl_main_scr);
 	}
@@ -163,6 +232,7 @@ static void display_png_frame_locked(const uint8_t *png_buf, size_t png_len)
 	}
 
 	lv_image_set_src(frame_img, &frame_dsc);
+	main_status_hide_locked();
 
 	/* Only flush if the main screen is actually visible. Server frames are
 	 * already dithered to the panel palette — do not re-dither, and they are
@@ -228,9 +298,11 @@ void ui_init(void)
 	lvgl_main_scr = lv_screen_active();
 	lv_obj_set_style_bg_color(lvgl_main_scr, lv_color_white(), 0);
 	lv_obj_set_style_bg_opa(lvgl_main_scr, LV_OPA_COVER, 0);
+	main_status_build_locked();
 
 	/* device_ui creates and loads the log screen; keeps lvgl_mutex held */
 	device_ui_init(lvgl_main_scr);
+	ui_lvgl_flush(false, UI_CTX_SWITCH);
 
 	k_mutex_unlock(&lvgl_mutex);
 
@@ -240,6 +312,27 @@ void ui_init(void)
 void ui_log_push(const char *msg)
 {
 	device_ui_log_push(msg);
+}
+
+void ui_server_status_show(const char *icon, const char *title,
+			   const char *body)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	main_status_set_locked(icon, title, body);
+	if (!device_ui_is_active()) {
+		ui_lvgl_flush(false, UI_CTX_UI);
+	}
+	k_mutex_unlock(&lvgl_mutex);
+}
+
+void ui_server_status_hide(void)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	main_status_hide_locked();
+	if (!device_ui_is_active()) {
+		ui_lvgl_flush(false, UI_CTX_UI);
+	}
+	k_mutex_unlock(&lvgl_mutex);
 }
 
 uint8_t *display_frame_write_buf(size_t *cap)
