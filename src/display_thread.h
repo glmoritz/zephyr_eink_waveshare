@@ -71,6 +71,11 @@ void ui_server_status_show(const char *icon, const char *title,
 void ui_server_status_hide(void);
 
 /**
+ * Return true once at least one server frame has been rendered.
+ */
+bool ui_has_server_frame(void);
+
+/**
  * Zero-copy frame producer API (replaces queue_display_frame).
  *
  * Fetch the next frame directly into the buffer returned here, then call

@@ -104,6 +104,8 @@ static lv_obj_t     *main_status_wrap;
 static lv_obj_t     *main_status_icon;
 static lv_obj_t     *main_status_title;
 static lv_obj_t     *main_status_body;
+static bool          server_frame_visible;
+
 static void main_status_build_locked(void)
 {
 	main_status_wrap = lv_obj_create(lvgl_main_scr);
@@ -263,6 +265,7 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 	}
 
 	lv_image_set_src(frame_img, &frame_dsc);
+	server_frame_visible = true;
 	main_status_hide_locked();
 
 	/* Only flush if the main screen is actually visible. Server frames are
@@ -364,6 +367,17 @@ void ui_server_status_hide(void)
 		ui_lvgl_flush(false, UI_CTX_UI);
 	}
 	k_mutex_unlock(&lvgl_mutex);
+}
+
+bool ui_has_server_frame(void)
+{
+	bool have_frame;
+
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	have_frame = server_frame_visible;
+	k_mutex_unlock(&lvgl_mutex);
+
+	return have_frame;
 }
 
 uint8_t *display_frame_write_buf(size_t *cap)

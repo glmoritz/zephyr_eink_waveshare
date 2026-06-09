@@ -674,7 +674,7 @@ static enum app_state do_poll(void)
 
 	switch (state.action) {
 	case LLSS_ACTION_FETCH_FRAME:
-		if (state.frame_id[0]) {
+		if (state.frame_id[0] && !ui_has_server_frame()) {
 			ui_server_status_show(ICON_SYNC,
 				"Loading screen",
 				"Receiving the latest content from the server.");
@@ -712,9 +712,11 @@ static enum app_state do_poll(void)
 static enum app_state do_fetch_frame(void)
 {
 	ui_log_push("Fetching frame...");
-	ui_server_status_show(ICON_SYNC,
-		"Loading screen",
-		"Receiving the latest content from the server.");
+	if (!ui_has_server_frame()) {
+		ui_server_status_show(ICON_SYNC,
+			"Loading screen",
+			"Receiving the latest content from the server.");
+	}
 
 	int32_t rc = session_ensure();
 
