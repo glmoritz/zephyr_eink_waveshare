@@ -36,6 +36,18 @@ LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_DBG);
 #define JSON_BUF_SIZE 2048
 static uint8_t json_recv_buf[JSON_BUF_SIZE];
 
+/* Scratch buffer the HTTP client uses to parse the raw response (status line +
+ * headers + body fragments). MUST be distinct from the caller's body buffer:
+ * the parser hands out body_frag pointers into this buffer while the response
+ * callback copies them into the caller's buffer, so sharing one buffer aliases
+ * the parse window with the accumulator and corrupts multi-fragment bodies
+ * (and overruns it, since raw HTTP = headers + body > body alone).
+ * 2 KB easily holds the response headers; the body streams through in
+ * fragments. Single-threaded request path (llss_thread), so a shared static is
+ * fine, matching json_recv_buf. */
+#define HTTP_RECV_SCRATCH 2048
+static uint8_t http_recv_scratch[HTTP_RECV_SCRATCH];
+
 /* =========================================================================
  * Server connection info parsed from CONFIG_LLSS_SERVER_URL
  * ========================================================================= */
@@ -251,7 +263,7 @@ static int ensure_dns_context_active(void)
 		return ret;
 	}
 
-	LOG_INF("DNS context recovered (%d server%s)",
+	LOG_DBG("DNS context recovered (%d server%s)",
 		count, count == 1 ? "" : "s");
 	return 0;
 }
@@ -283,7 +295,7 @@ static void cache_server_addr(const struct sockaddr *addr, socklen_t addrlen)
 	}
 
 	if (raw_addr && net_addr_ntop(family, raw_addr, addr_buf, sizeof(addr_buf))) {
-		LOG_INF("LLSS cache store: %s", addr_buf);
+		LOG_DBG("LLSS cache store: %s", addr_buf);
 	}
 }
 
@@ -305,13 +317,13 @@ static void log_tls_socket_state(int32_t sock, const char *phase)
 	optlen = sizeof(verify_result);
 	if (zsock_getsockopt(sock, SOL_TLS, TLS_CERT_VERIFY_RESULT,
 				    &verify_result, &optlen) == 0) {
-		LOG_INF("LLSS %s: verify_result=0x%x", phase, verify_result);
+		LOG_DBG("LLSS %s: verify_result=0x%x", phase, verify_result);
 	}
 
 	optlen = sizeof(ciphersuite);
 	if (zsock_getsockopt(sock, SOL_TLS, TLS_CIPHERSUITE_USED,
 				    &ciphersuite, &optlen) == 0) {
-		LOG_INF("LLSS %s: ciphersuite=0x%x", phase, ciphersuite);
+		LOG_DBG("LLSS %s: ciphersuite=0x%x", phase, ciphersuite);
 	}
 }
 
@@ -372,21 +384,21 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 	}
 
 	start_ms = k_uptime_get();
-	LOG_INF("LLSS connect start: %s (%s)", addr_buf,
+	LOG_DBG("LLSS connect start: %s (%s)", addr_buf,
 		family == AF_INET6 ? "IPv6" : "IPv4");
 	rc = zsock_connect(sock, (struct sockaddr *)&target, addrlen);
 	if (rc == 0) {
 		cache_server_addr((struct sockaddr *)&target, addrlen);
 		log_tls_socket_state(sock, "connect ok");
 
-		LOG_INF("LLSS connect ok: %s in %" PRIi64 " ms",
+		LOG_DBG("LLSS connect ok: %s in %" PRIi64 " ms",
 			addr_buf, k_uptime_get() - start_ms);
 		return sock;
 	}
 
 	saved_errno = errno;
 	log_tls_socket_state(sock, "connect fail");
-	LOG_INF("LLSS connect fail: %s errno=%d after %" PRIi64 " ms",
+	LOG_DBG("LLSS connect fail: %s errno=%d after %" PRIi64 " ms",
 		addr_buf, saved_errno, k_uptime_get() - start_ms);
 	zsock_close(sock);
 	return -saved_errno;
@@ -402,18 +414,18 @@ static int open_tls_socket(void)
 	int64_t dns_start_ms;
 
 	if (cached_server_addr_valid) {
-		LOG_INF("LLSS cache hit: trying cached server address");
+		LOG_DBG("LLSS cache hit: trying cached server address");
 		sock = connect_tls_addr((struct sockaddr *)&cached_server_addr,
 				       cached_server_addrlen);
 		if (sock >= 0) {
-			LOG_INF("LLSS cache hit: reused cached address");
+			LOG_DBG("LLSS cache hit: reused cached address");
 			return sock;
 		}
 
 		LOG_WRN("Cached server address failed (%d) — re-resolving", sock);
 		invalidate_cached_server_addr();
 	} else {
-		LOG_INF("LLSS cache miss: resolving %s", server_host);
+		LOG_DBG("LLSS cache miss: resolving %s", server_host);
 	}
 
 	ret = ensure_dns_context_active();
@@ -424,7 +436,7 @@ static int open_tls_socket(void)
 	/* Semaphore limit = 2: one give per completed query */
 	k_sem_init(&dns.done, 0, 2);
 	dns_start_ms = k_uptime_get();
-	LOG_INF("LLSS DNS start: %s", server_host);
+	LOG_DBG("LLSS DNS start: %s", server_host);
 	/* Fire AAAA and A concurrently — DNS_NUM_CONCUR_QUERIES >= 2 */
 	if (dns_get_addr_info(server_host, DNS_QUERY_TYPE_AAAA,
 			      &dns_id_aaaa, dns_result_cb, &dns,
@@ -447,7 +459,7 @@ static int open_tls_socket(void)
 		return -EHOSTUNREACH;
 	}
 
-	LOG_INF("LLSS DNS done: %d result(s) in %" PRIi64 " ms",
+	LOG_DBG("LLSS DNS done: %d result(s) in %" PRIi64 " ms",
 		dns.count, k_uptime_get() - dns_start_ms);
 
 	sock = -1;
@@ -488,15 +500,12 @@ static int http_response_cb(struct http_response *rsp,
 
 	if (rsp->http_status_code && !ctx->http_status) {
 		ctx->http_status = rsp->http_status_code;
-		LOG_INF("LLSS rsp status: HTTP %d", ctx->http_status);
 	}
 
 	if (rsp->body_frag_len > 0 && ctx->buf && !ctx->overflow) {
 		if (!ctx->saw_body) {
 			ctx->saw_body = true;
 			ctx->first_body_ms = k_uptime_get();
-			LOG_INF("LLSS rsp first body fragment: %zu bytes",
-				rsp->body_frag_len);
 		}
 
 		/* Leave 1 byte for NUL terminator in JSON buffers */
@@ -515,7 +524,6 @@ static int http_response_cb(struct http_response *rsp,
 
 	if (final == HTTP_DATA_FINAL && ctx->buf) {
 		ctx->buf[ctx->len] = '\0';
-		LOG_INF("LLSS rsp final: total=%zu bytes", ctx->len);
 	}
 	return 0;
 }
@@ -543,7 +551,6 @@ static int do_request(enum http_method method, const char *path,
 		      uint8_t *recv_buf, size_t recv_buf_size,
 		      size_t *body_len_out)
 {
-	int64_t req_start_ms = k_uptime_get();
 	/* Phase A: reuse persistent session socket if one is open. */
 	bool owned_sock = (session_sock < 0);
 	int32_t sock = owned_sock ? open_tls_socket() : session_sock;
@@ -591,8 +598,6 @@ static int do_request(enum http_method method, const char *path,
 		return -EINVAL;
 	}
 
-	LOG_INF("LLSS req start: %s %s", http_method_str(method), full_path);
-
 	struct http_request req = {
 		.method        = method,
 		.url           = full_path,
@@ -602,24 +607,18 @@ static int do_request(enum http_method method, const char *path,
 		.payload       = body,
 		.payload_len   = body ? strlen(body) : 0,
 		.response      = http_response_cb,
-		.recv_buf      = recv_buf,
-		.recv_buf_len  = recv_buf_size,
+		/* HTTP parse scratch — distinct from ctx.buf (the caller's body
+		 * accumulator). See http_recv_scratch declaration. */
+		.recv_buf      = http_recv_scratch,
+		.recv_buf_len  = sizeof(http_recv_scratch),
 	};
 
 	int32_t rc = http_client_req(sock, &req, CONFIG_LLSS_HTTP_TIMEOUT_MS, &ctx);
-	int64_t req_done_ms = k_uptime_get();
-
-	LOG_INF("LLSS req done: %s %s rc=%d http=%d bytes=%zu in %" PRIi64 " ms",
-		http_method_str(method), full_path, rc, ctx.http_status, ctx.len,
-		req_done_ms - req_start_ms);
-
 	if (owned_sock) {
 		int64_t close_start_ms = k_uptime_get();
 
-		LOG_INF("LLSS close start: %s", full_path);
 		zsock_close(sock);
-		LOG_INF("LLSS close done: %s in %" PRIi64 " ms", full_path,
-			k_uptime_get() - close_start_ms);
+		ARG_UNUSED(close_start_ms);
 	} else if (rc < 0) {
 		/* Shared session socket is broken — invalidate it so the next
 		 * call in this job will fall back to opening a fresh one. */
@@ -645,9 +644,6 @@ static int do_request(enum http_method method, const char *path,
 		*body_len_out = ctx.len;
 	}
 
-	LOG_DBG("%s %s → HTTP %d (%zu bytes)",
-		http_method_str(method), full_path, ctx.http_status, ctx.len);
-
 	return ctx.http_status;
 }
 
@@ -669,7 +665,7 @@ int llss_session_open(void)
 		return err;
 	}
 
-	LOG_INF("LLSS session open: sock=%d", session_sock);
+	LOG_DBG("LLSS session open: sock=%d", session_sock);
 	return 0;
 }
 
@@ -679,7 +675,7 @@ void llss_session_close(void)
 		return;
 	}
 
-	LOG_INF("LLSS session close: sock=%d", session_sock);
+	LOG_DBG("LLSS session close: sock=%d", session_sock);
 	zsock_close(session_sock);
 	session_sock = -1;
 }
@@ -1094,6 +1090,9 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 		state_out->action = LLSS_ACTION_FETCH_FRAME;
 	} else if (strcmp(resp.action, "SLEEP") == 0) {
 		state_out->action = LLSS_ACTION_SLEEP;
+	} else if (strcmp(resp.action, "NOOP") == 0) {
+		/* Explicit "nothing to do" — poll again, no warning. */
+		state_out->action = LLSS_ACTION_NOOP;
 	} else {
 		LOG_WRN("Unknown state action: %s", resp.action);
 		state_out->action = LLSS_ACTION_NOOP;
@@ -1106,11 +1105,6 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 					 CONFIG_LLSS_MIN_POLL_MS,
 					 CONFIG_LLSS_MAX_POLL_MS);
 
-	LOG_INF("State: action=%s mapped=%d frame_id=%s poll_after_ms=%d",
-		resp.action[0] ? resp.action : "(empty)",
-		state_out->action,
-		state_out->frame_id[0] ? state_out->frame_id : "(none)",
-		state_out->poll_after_ms);
 	return 0;
 }
 
@@ -1125,8 +1119,14 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 
 	/* ?raw=true => panel-native packed framebuffer (1bpp: 48000 B, MSB-first)
 	 * instead of a PNG. Blitted straight to panel RAM — no on-device decode. */
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+	/* &pattern=1 => server returns the deterministic self-test pattern. */
+	snprintf(path, sizeof(path), "/devices/%s/frames/%s?raw=true&pattern=1",
+		 device_id, frame_id);
+#else
 	snprintf(path, sizeof(path), "/devices/%s/frames/%s?raw=true",
 		 device_id, frame_id);
+#endif
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
 	/* HTTP body lands directly in the caller's buffer (a display pipeline
@@ -1155,7 +1155,6 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 
 	*len_out = body_len;
 
-	LOG_INF("Frame fetched: %zu bytes", body_len);
 	return 0;
 }
 

@@ -34,6 +34,10 @@
 #include "system_flags.h"
 #include "wifi_prov.h"
 
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+#include "pattern_check.h"
+#endif
+
 LOG_MODULE_REGISTER(llss, LOG_LEVEL_INF);
 
 #define LLSS_THREAD_STACK    16384
@@ -740,6 +744,21 @@ static enum app_state do_fetch_frame(void)
 		LOG_ERR("Fetch frame failed: %d", rc);
 		return STATE_POLLING;
 	}
+
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+	/* CP1 — verify the bytes the HTTP layer delivered, before the buffer is
+	 * handed to the display pipeline. Exercises transport + the do_request()
+	 * recv_buf/ctx.buf aliasing. `dst` is the body (slot + I1 palette). The
+	 * canary lives in the slot slack right after the 48000-byte body. */
+	(void)pattern_verify(dst, png_len, "CP1-fetch");
+	/* http_response_cb writes one NUL terminator at dst[png_len]; that byte
+	 * legitimately lands on the first slack byte, so skip it and check the
+	 * rest of the slack for real overruns. */
+	if (png_len == PATTERN_BYTES && cap > PATTERN_BYTES + 1) {
+		(void)pattern_canary_verify(dst + PATTERN_BYTES + 1,
+					    cap - PATTERN_BYTES - 1, "CP1-canary");
+	}
+#endif
 
 	if (png_len > 0) {
 		int32_t drc = display_frame_submit(png_len);

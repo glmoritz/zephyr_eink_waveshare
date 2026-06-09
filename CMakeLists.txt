@@ -35,3 +35,6 @@ target_sources(app PRIVATE
 if(NOT BOARD MATCHES "native_sim")
     target_sources(app PRIVATE src/display_ssd16xx_800x480.c)
 endif()
+
+# Temporary deterministic frame pattern self-test.
+target_sources_ifdef(CONFIG_LLSS_PATTERN_TEST app PRIVATE src/pattern_check.c)

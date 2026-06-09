@@ -44,6 +44,10 @@ static const char *const btn_name[UI_BTN_COUNT] = {
 
 enum ui_btn ui_btn_from_keycode(int keycode)
 {
+	if (keycode == INPUT_KEY_KPENTER) {
+		return UI_BTN_ENTER;
+	}
+
 	for (int32_t i = 0; i < UI_BTN_COUNT; i++) {
 		if (btn_keycode[i] == keycode) {
 			return (enum ui_btn)i;

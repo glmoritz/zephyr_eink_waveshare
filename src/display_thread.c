@@ -34,6 +34,10 @@
 #include "material_icons.h"
 #include "section_attrs.h"
 
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+#include "pattern_check.h"
+#endif
+
 /* Custom panel driver is hardware-only; on native_sim the SDL display has no
  * dither control, so guard the call out entirely. */
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
@@ -247,6 +251,25 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 		lv_screen_load(lvgl_main_scr);
 	}
 
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+	/* CP2 — verify the bytes after the triple-buffer swap, i.e. exactly what
+	 * we are about to hand to LVGL. If CP1 passed but CP2 fails, the swap
+	 * logic handed us the wrong/stale/overwritten slot. The body sits after
+	 * the reserved I1 palette; the canary is in the slot slack after it. */
+	(void)pattern_verify(slot + LLSS_I1_PALETTE_BYTES, bitmap_len, "CP2-render");
+	if (bitmap_len == PATTERN_BYTES) {
+		/* +1 skips the HTTP-layer NUL terminator that lands on the first
+		 * slack byte (see CP1-canary note). */
+		size_t used = LLSS_I1_PALETTE_BYTES + PATTERN_BYTES + 1;
+
+		if (CONFIG_LLSS_FRAME_BUF_SIZE > used) {
+			(void)pattern_canary_verify(slot + used,
+						    CONFIG_LLSS_FRAME_BUF_SIZE - used,
+						    "CP2-canary");
+		}
+	}
+#endif
+
 	/* Fill the palette LVGL expects immediately before the bitmap. */
 	memcpy(slot, i1_palette, sizeof(i1_palette));
 
@@ -325,6 +348,19 @@ K_THREAD_DEFINE(display_thread, DISPLAY_THREAD_STACK,
 
 void ui_init(void)
 {
+#if defined(CONFIG_LLSS_PATTERN_TEST)
+	/* Lay down a canary in the slack of every slot (after palette + 48000 B
+	 * body) so any write that spills past the frame body is detectable. */
+	size_t used = LLSS_I1_PALETTE_BYTES + PATTERN_BYTES;
+
+	if (CONFIG_LLSS_FRAME_BUF_SIZE > used) {
+		for (int i = 0; i < FRAME_BUF_COUNT; i++) {
+			pattern_canary_fill(frame_mem[i] + used,
+					    CONFIG_LLSS_FRAME_BUF_SIZE - used);
+		}
+	}
+#endif
+
 	lv_lodepng_init();
 
 	k_mutex_lock(&lvgl_mutex, K_FOREVER);

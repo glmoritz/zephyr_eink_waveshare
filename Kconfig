@@ -110,6 +110,17 @@ config LLSS_MAX_URL_LEN
 	int "Maximum constructed URL length"
 	default 256
 
+config LLSS_PATTERN_TEST
+	bool "Deterministic frame pattern self-test (temporary debug)"
+	default n
+	help
+	  Request a synthetic 1bpp pattern from the server (?raw=true&pattern=1)
+	  instead of real frame content, and verify it byte-for-byte at each
+	  pipeline stage (CP1 fetch, CP2 render) plus triple-buffer slack
+	  canaries. The pattern is also visually structured so geometry errors
+	  are obvious on the SDL/native_sim display. Temporary debugging aid;
+	  keep disabled for normal operation.
+
 endmenu
 
 source "Kconfig.zephyr"
