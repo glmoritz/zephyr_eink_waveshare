@@ -625,12 +625,16 @@ static int do_request(enum http_method method, const char *path,
 		LOG_WRN("LLSS session socket error (rc=%d) — invalidating", rc);
 		zsock_close(session_sock);
 		session_sock = -1;
-	} else if (rc >= 400) {
-		/* Server returned an error status — it typically sends a
+	} else if (ctx.http_status >= 400) {
+		/* Server returned an HTTP error status — it typically sends a
 		 * TLS close_notify on errors.  Invalidate now so the next
 		 * call opens a fresh connection rather than hitting a dead
-		 * socket. */
-		LOG_DBG("LLSS session: HTTP %d — closing (server likely sent close_notify)", rc);
+		 * socket.  NOTE: gate on ctx.http_status (the parsed HTTP code),
+		 * NOT rc — http_client_req() returns a BYTE COUNT, so a healthy
+		 * ~420-byte button response was being misread as "HTTP 420" and
+		 * needlessly tore down the persistent session every press. */
+		LOG_DBG("LLSS session: HTTP %d — closing (server likely sent close_notify)",
+			ctx.http_status);
 		zsock_close(session_sock);
 		session_sock = -1;
 	}
