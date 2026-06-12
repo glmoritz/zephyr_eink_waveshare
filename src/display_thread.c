@@ -46,6 +46,9 @@
 
 LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 
+LV_FONT_DECLARE(chicago_18);   /* Mac title  (shared with device_ui) */
+LV_FONT_DECLARE(geneva_14);    /* Mac body   (shared with device_ui) */
+
 #define DISPLAY_NODE            DT_CHOSEN(zephyr_display)
 #define DISPLAY_THREAD_STACK    12288
 #define DISPLAY_THREAD_PRIORITY 12
@@ -110,39 +113,65 @@ static lv_obj_t     *main_status_title;
 static lv_obj_t     *main_status_body;
 static bool          server_frame_visible;
 
+/* Bare opaque child panel — no border/padding/scroll. */
+static lv_obj_t *status_panel(lv_obj_t *parent, int32_t w, int32_t h,
+			      lv_color_t bg)
+{
+	lv_obj_t *o = lv_obj_create(parent);
+
+	lv_obj_remove_style_all(o);
+	lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_set_size(o, w, h);
+	lv_obj_set_style_bg_color(o, bg, 0);
+	lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+	return o;
+}
+
+/* Mac-style "server status" splash: a centred framed dialog (white box, 2px
+ * black border, hard 3px drop shadow) holding the big status icon, a Chicago
+ * title and a Geneva body — consistent with the device menu and HLSS dialogs. */
 static void main_status_build_locked(void)
 {
-	main_status_wrap = lv_obj_create(lvgl_main_scr);
-	lv_obj_remove_style_all(main_status_wrap);
-	lv_obj_set_size(main_status_wrap, 800, 480);
-	lv_obj_clear_flag(main_status_wrap, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_set_style_bg_color(main_status_wrap, lv_color_white(), 0);
-	lv_obj_set_style_bg_opa(main_status_wrap, LV_OPA_COVER, 0);
+	const int32_t bx = 130, by = 80, bw = 540, bh = 320;
 
-	main_status_icon = lv_label_create(main_status_wrap);
+	main_status_wrap = status_panel(lvgl_main_scr, 800, 480, lv_color_white());
+
+	/* hard drop shadow then the framed white dialog box */
+	lv_obj_t *shadow = status_panel(main_status_wrap, bw, bh, lv_color_black());
+
+	lv_obj_set_pos(shadow, bx + 3, by + 3);
+
+	lv_obj_t *box = status_panel(main_status_wrap, bw, bh, lv_color_white());
+
+	lv_obj_set_pos(box, bx, by);
+	lv_obj_set_style_border_width(box, 2, 0);
+	lv_obj_set_style_border_color(box, lv_color_black(), 0);
+	lv_obj_set_style_border_opa(box, LV_OPA_COVER, 0);
+
+	main_status_icon = lv_label_create(box);
 	lv_obj_set_style_text_font(main_status_icon, &material_design_120, 0);
 	lv_obj_set_style_text_color(main_status_icon, lv_color_black(), 0);
 	lv_label_set_text(main_status_icon, ICON_NOTIFICATION);
-	lv_obj_align(main_status_icon, LV_ALIGN_TOP_MID, 0, 34);
+	lv_obj_align(main_status_icon, LV_ALIGN_TOP_MID, 0, 18);
 
-	main_status_title = lv_label_create(main_status_wrap);
-	lv_obj_set_width(main_status_title, 620);
-	lv_obj_set_style_text_font(main_status_title, &lv_font_montserrat_28, 0);
+	main_status_title = lv_label_create(box);
+	lv_obj_set_width(main_status_title, bw - 48);
+	lv_obj_set_style_text_font(main_status_title, &chicago_18, 0);
 	lv_obj_set_style_text_color(main_status_title, lv_color_black(), 0);
 	lv_obj_set_style_text_align(main_status_title, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_long_mode(main_status_title, LV_LABEL_LONG_WRAP);
-	lv_label_set_text(main_status_title, "Starting device");
-	lv_obj_align(main_status_title, LV_ALIGN_TOP_MID, 0, 182);
+	lv_label_set_text(main_status_title, "Iniciando dispositivo");
+	lv_obj_align(main_status_title, LV_ALIGN_TOP_MID, 0, 162);
 
-	main_status_body = lv_label_create(main_status_wrap);
-	lv_obj_set_width(main_status_body, 620);
-	lv_obj_set_style_text_font(main_status_body, &lv_font_montserrat_14, 0);
-	lv_obj_set_style_text_color(main_status_body, lv_palette_main(LV_PALETTE_GREY), 0);
+	main_status_body = lv_label_create(box);
+	lv_obj_set_width(main_status_body, bw - 64);
+	lv_obj_set_style_text_font(main_status_body, &geneva_14, 0);
+	lv_obj_set_style_text_color(main_status_body, lv_color_black(), 0);
 	lv_obj_set_style_text_align(main_status_body, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_long_mode(main_status_body, LV_LABEL_LONG_WRAP);
 	lv_label_set_text(main_status_body,
-			  "Please wait while the device prepares its first screen.");
-	lv_obj_align(main_status_body, LV_ALIGN_TOP_MID, 0, 246);
+			  "Aguarde enquanto o dispositivo prepara a primeira tela.");
+	lv_obj_align(main_status_body, LV_ALIGN_TOP_MID, 0, 210);
 }
 
 static void main_status_set_locked(const char *icon, const char *title,

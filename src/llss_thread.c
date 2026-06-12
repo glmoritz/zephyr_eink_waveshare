@@ -253,6 +253,16 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 	return 0;
 }
 
+static int cmd_btn_shortcut(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc < 2) {
+		shell_error(sh, "Usage: b <1..8|en|esc|hl|hr>");
+		return -EINVAL;
+	}
+
+	return shell_btn(sh, argc, argv, false);
+}
+
 static int cmd_btn_press(const struct shell *sh, size_t argc, char **argv)
 {
 	return shell_btn(sh, argc, argv, false);
@@ -276,6 +286,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_btn,
 SHELL_CMD_REGISTER(btn, &sub_btn,
 		   "Inject button events through the input subsystem", NULL);
 
+SHELL_CMD_ARG_REGISTER(b, NULL,
+		       "Shortcut for short button press: b <1..8|en|esc|hl|hr>",
+		       cmd_btn_shortcut, 2, 0);
+
 /* =========================================================================
  * WiFi / session
  * ========================================================================= */
@@ -293,32 +307,32 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 	switch (state) {
 	case WIFI_PROV_CONNECTING:
 		LOG_INF("WiFi connecting: %s", info);
-		snprintf(msg, sizeof(msg), "WiFi connecting: %s", info);
+		snprintf(msg, sizeof(msg), "Wi-Fi conectando: %s", info);
 		ui_log_push(msg);
 		ui_server_status_show(ICON_WIFI,
-			"Connecting to Wi-Fi",
-			(info && info[0]) ? info : "Joining the saved network.");
+			"Conectando ao Wi-Fi",
+			(info && info[0]) ? info : "Entrando na rede salva.");
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	case WIFI_PROV_CONNECTED:
 		LOG_INF("WiFi connected: %s", info);
-		snprintf(msg, sizeof(msg), "WiFi connected — IP: %s", info);
+		snprintf(msg, sizeof(msg), "Wi-Fi conectado, IP: %s", info);
 		ui_log_push(msg);
 		if (!last_frame_id[0]) {
 			ui_server_status_show(ICON_SCHEDULE,
-				"Connected",
-				"Syncing time and preparing your first screen.");
+				"Conectado",
+				"Sincronizando horario e preparando sua primeira tela.");
 		}
 		sys_flag_clear(SYS_FLAG_WIFI_PROVISIONING);
 		sys_flag_set(SYS_FLAG_WIFI_READY);
 		break;
 	case WIFI_PROV_DISCONNECTED:
 		LOG_WRN("WiFi disconnected");
-		ui_log_push("WiFi disconnected — reconnecting...");
+		ui_log_push("WiFi desconectado, reconectando...");
 		if (!last_frame_id[0]) {
 			ui_server_status_show(ICON_WARNING,
-				"Connection lost",
-				"Trying to reconnect to Wi-Fi.");
+				"Conexao perdida",
+				"Tentando reconectar ao Wi-Fi.");
 		}
 		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
 		/* Tear down the held TLS session — the underlying TCP is dead.
@@ -327,11 +341,11 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 		atomic_set(&session_reset_requested, 1);
 		break;
 	case WIFI_PROV_AP_ACTIVE:
-		snprintf(msg, sizeof(msg), "AP mode — connect to: %s", info);
+		snprintf(msg, sizeof(msg), "Modo AP, conecte-se a: %s", info);
 		ui_log_push(msg);
 		ui_server_status_show(ICON_WIFI_HOTSPOT,
-			"Set up Wi-Fi",
-			(info && info[0]) ? info : "Connect to the device access point to continue.");
+			"Configurar Wi-Fi",
+			(info && info[0]) ? info : "Conecte-se ao ponto de acesso do dispositivo para continuar.");
 		sys_flag_clear(SYS_FLAG_WIFI_READY);
 		sys_flag_set(SYS_FLAG_WIFI_PROVISIONING);
 		break;
@@ -417,10 +431,10 @@ static void update_access_token(const char *token)
 
 static enum app_state do_register(void)
 {
-	ui_log_push("Connecting to server — registering device...");
+	ui_log_push("Conectando ao servidor, registrando...");
 	ui_server_status_show(ICON_APP_REGISTER,
-		"Registering device",
-		"Connecting this device to the service.");
+		"Registrando dispositivo",
+		"Conectando este dispositivo ao servico.");
 
 	int32_t rc = session_ensure();
 
@@ -454,22 +468,22 @@ static enum app_state do_register(void)
 		 *   (b) the device be authorized as-is by the admin (we can't
 		 *       use it without the secret, but the record is valid). */
 		LOG_WRN("Already registered (409) — going to pending.");
-		ui_log_push("Device already registered — pending admin approval");
+		ui_log_push("Ja registrado, aguardando aprovacao");
 		return STATE_WAITING_AUTHORIZATION;
 	}
 
 	LOG_ERR("Registration failed: %d — retry in 10s", rc);
-	ui_log_push("Server unreachable — retrying in 10s...");
+	ui_log_push("Servidor inacessivel, tentando em 10s...");
 	k_msleep(10000);
 	return STATE_REGISTERING;
 }
 
 static enum app_state do_wait_authorization(void)
 {
-	ui_log_push("Pending authorization - approve device in admin portal");
+	ui_log_push("Aguardando autorizacao no portal admin");
 	ui_server_status_show(ICON_PENDING,
-		"Approval required",
-		"Authorize this device in the admin portal to continue.");
+		"Aprovacao necessaria",
+		"Autorize este dispositivo no portal admin para continuar.");
 
 	/* If we reached WAITING without ever having a device_secret (most
 	 * likely we came here from a 409 on /register), there is nothing to
@@ -510,12 +524,12 @@ static enum app_state do_wait_authorization(void)
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		LOG_ERR("Device rejected/revoked");
 		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
-		ui_log_push("Device rejected — contact admin");
+		ui_log_push("Dispositivo rejeitado, contate o admin");
 		return STATE_ERROR;
 	}
 
 	LOG_ERR("Auth check failed (%d) — retry in 10s", rc);
-	ui_log_push("Server unreachable — retrying...");
+	ui_log_push("Servidor inacessivel, tentando...");
 	k_msleep(10000);
 	return STATE_WAITING_AUTHORIZATION;
 }
@@ -524,8 +538,8 @@ static enum app_state do_refresh(void)
 {
 	if (!last_frame_id[0]) {
 		ui_server_status_show(ICON_VPN_KEY,
-			"Signing in",
-			"Restoring access to your screen service.");
+			"Entrando",
+			"Restaurando o acesso ao servico.");
 	}
 
 	if (!refresh_token[0]) {
@@ -560,10 +574,10 @@ static enum app_state do_refresh(void)
 
 static enum app_state do_authenticate(void)
 {
-	ui_log_push("Authenticating...");
+	ui_log_push("Autenticando...");
 	ui_server_status_show(ICON_LOCK_CLOCK,
-		"Checking access",
-		"Confirming this device is ready to receive screens.");
+		"Verificando acesso",
+		"Confirmando que o dispositivo pode receber telas.");
 
 	if (!device_secret[0]) {
 		LOG_ERR("No device_secret — re-registering");
@@ -606,7 +620,7 @@ static enum app_state do_authenticate(void)
 		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
 		session_close_on_net_error(-EACCES);
 		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
-		ui_log_push("Device rejected — contact admin");
+		ui_log_push("Dispositivo rejeitado, contate o admin");
 		return STATE_ERROR;
 	}
 
@@ -650,12 +664,28 @@ static enum app_state do_send_input(const struct button_event *bev)
 	return STATE_POLLING;
 }
 
+/* Idle wait that stays responsive: block up to `timeout_ms` ON THE BUTTON
+ * QUEUE instead of sleeping blind.  A press wakes us instantly and is sent
+ * right away (the old k_msleep made every press wait out up to a full poll
+ * interval before it was even forwarded).  On timeout we return to POLLING so
+ * the routine poll still runs at the server's cadence. */
+static enum app_state wait_button_or_poll(int32_t timeout_ms)
+{
+	struct button_event bev;
+
+	if (k_msgq_get(&btn_queue, &bev, K_MSEC(timeout_ms)) == 0) {
+		LOG_INF("Button: %s %s",
+			ui_btn_llss_name(bev.btn), ui_evt_llss_name(bev.evt));
+		return do_send_input(&bev);
+	}
+	return STATE_POLLING;
+}
+
 static enum app_state do_poll(void)
 {
 	int32_t rc = session_ensure();
 
 	if (rc < 0) {
-		k_msleep(poll_interval_ms);
 		return STATE_POLLING;
 	}
 
@@ -669,8 +699,7 @@ static enum app_state do_poll(void)
 		return STATE_REFRESHING;
 	}
 	if (rc < 0) {
-		LOG_ERR("Poll error %d — wait %d ms", rc, poll_interval_ms);
-		k_msleep(poll_interval_ms);
+		LOG_ERR("Poll error %d", rc);
 		return STATE_POLLING;
 	}
 
@@ -680,8 +709,8 @@ static enum app_state do_poll(void)
 	case LLSS_ACTION_FETCH_FRAME:
 		if (state.frame_id[0] && !ui_has_server_frame()) {
 			ui_server_status_show(ICON_SYNC,
-				"Loading screen",
-				"Receiving the latest content from the server.");
+				"Carregando tela",
+				"Recebendo o conteudo mais recente do servidor.");
 		}
 		if (state.frame_id[0]) {
 			strncpy(last_frame_id, state.frame_id,
@@ -690,36 +719,34 @@ static enum app_state do_poll(void)
 		}
 		if (!last_frame_id[0]) {
 			ui_server_status_show(ICON_SCREEN,
-				"Waiting for content",
-				"The device is online and waiting for its first screen.");
+				"Aguardando conteudo",
+				"O dispositivo esta conectado e aguardando a primeira tela.");
 		}
-		k_msleep(poll_interval_ms);
 		return STATE_POLLING;
 	case LLSS_ACTION_SLEEP:
 		if (!last_frame_id[0]) {
 			ui_server_status_show(ICON_MONITOR,
-				"Waiting for content",
-				"The device is online and waiting for its first screen.");
+				"Aguardando conteudo",
+				"O dispositivo esta conectado e aguardando a primeira tela.");
 		}
 		return STATE_SLEEPING;
 	default:
 		if (!last_frame_id[0]) {
 			ui_server_status_show(ICON_MONITOR,
-				"Waiting for content",
-				"The device is online and waiting for its first screen.");
+				"Aguardando conteudo",
+				"O dispositivo esta conectado e aguardando a primeira tela.");
 		}
-		k_msleep(poll_interval_ms);
 		return STATE_POLLING;
 	}
 }
 
 static enum app_state do_fetch_frame(void)
 {
-	ui_log_push("Fetching frame...");
+	ui_log_push("Baixando tela...");
 	if (!ui_has_server_frame()) {
 		ui_server_status_show(ICON_SYNC,
-			"Loading screen",
-			"Receiving the latest content from the server.");
+			"Carregando tela",
+			"Recebendo o conteudo mais recente do servidor.");
 	}
 
 	int32_t rc = session_ensure();
@@ -798,7 +825,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 
 	if (rc) {
 		LOG_ERR("llss_client_init: %d", rc);
-		ui_log_push("LLSS init failed — check CA cert");
+		ui_log_push("Falha LLSS, verifique cert CA");
 		app_state = STATE_ERROR;
 	} else {
 		app_state = device_id[0] ? STATE_REFRESHING : STATE_REGISTERING;
@@ -856,15 +883,20 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 			break;
 		case STATE_POLLING:               /* -> POLLING | FETCHING_FRAME | SLEEPING | REFRESHING */
 			app_state = do_poll();
+			/* Poll found nothing to fetch -> idle on the button queue for
+			 * one interval so a press is serviced instantly instead of
+			 * after a blind sleep. */
+			if (app_state == STATE_POLLING) {
+				app_state = wait_button_or_poll(poll_interval_ms);
+			}
 			break;
 		case STATE_FETCHING_FRAME:        /* -> POLLING | REFRESHING */
 			app_state = do_fetch_frame();
 			break;
-		case STATE_SLEEPING:              /* -> POLLING */
+		case STATE_SLEEPING:              /* -> POLLING | FETCHING_FRAME | REFRESHING */
 			LOG_INF("Sleeping for %d ms", poll_interval_ms);
-			ui_log_push("Sleeping...");
-			k_msleep(poll_interval_ms);
-			app_state = STATE_POLLING;
+			ui_log_push("Dormindo...");
+			app_state = wait_button_or_poll(poll_interval_ms);
 			break;
 		case STATE_ERROR:                 /* terminal */
 			k_msleep(60000);

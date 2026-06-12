@@ -66,6 +66,47 @@ int ui_btn_to_keycode(enum ui_btn btn)
 
 enum ui_btn ui_btn_from_name(const char *name)
 {
+	if (name == NULL || name[0] == '\0') {
+		return UI_BTN_NONE;
+	}
+
+	if (strcmp(name, "1") == 0) {
+		return UI_BTN_1;
+	}
+	if (strcmp(name, "2") == 0) {
+		return UI_BTN_2;
+	}
+	if (strcmp(name, "3") == 0) {
+		return UI_BTN_3;
+	}
+	if (strcmp(name, "4") == 0) {
+		return UI_BTN_4;
+	}
+	if (strcmp(name, "5") == 0) {
+		return UI_BTN_5;
+	}
+	if (strcmp(name, "6") == 0) {
+		return UI_BTN_6;
+	}
+	if (strcmp(name, "7") == 0) {
+		return UI_BTN_7;
+	}
+	if (strcmp(name, "8") == 0) {
+		return UI_BTN_8;
+	}
+	if ((strcmp(name, "en") == 0) || (strcmp(name, "enter") == 0)) {
+		return UI_BTN_ENTER;
+	}
+	if ((strcmp(name, "esc") == 0) || (strcmp(name, "escape") == 0)) {
+		return UI_BTN_ESC;
+	}
+	if ((strcmp(name, "hl") == 0) || (strcmp(name, "left") == 0)) {
+		return UI_BTN_HL_LEFT;
+	}
+	if ((strcmp(name, "hr") == 0) || (strcmp(name, "right") == 0)) {
+		return UI_BTN_HL_RIGHT;
+	}
+
 	for (int32_t i = 0; i < UI_BTN_COUNT; i++) {
 		if (btn_name[i] && strcmp(btn_name[i], name) == 0) {
 			return (enum ui_btn)i;

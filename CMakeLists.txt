@@ -22,6 +22,9 @@ target_sources(app PRIVATE
     src/shtc3_thread.c
     src/display_thread.c
     src/device_ui.c
+    src/chicago_18.c
+    src/geneva_14.c
+    src/geneva_9.c
     src/dseg_bold_italic_200_compressed.c
     src/material_design_40.c
     src/material_design_120.c

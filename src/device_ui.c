@@ -29,6 +29,9 @@
 #include <lvgl.h>
 
 LV_FONT_DECLARE(dseg_bold_italic_200);
+LV_FONT_DECLARE(chicago_18);   /* Mac chrome / titles + emphasis values        */
+LV_FONT_DECLARE(geneva_14);    /* Mac body / labels / soft-keys                */
+LV_FONT_DECLARE(geneva_9);     /* dense log console                            */
 
 #include "device_ui.h"
 #include "display_thread.h"
@@ -277,7 +280,7 @@ static void render_log_locked(void)
 		log_text_buf[pos] = '\0';
 	}
 
-	lv_label_set_text(log_content, n ? log_text_buf : "(no messages)");
+	lv_label_set_text(log_content, n ? log_text_buf : "(sem mensagens)");
 	lv_screen_load(log_scr);
 }
 
@@ -286,19 +289,19 @@ static void render_net_locked(void)
 	const char *ssid = wifi_prov_get_ssid();
 	const char *ip   = wifi_prov_get_ip();
 
-	lv_label_set_text(net_ssid_lbl, (ssid && ssid[0]) ? ssid : "Not connected");
-	lv_label_set_text(net_ip_lbl,   (ip && ip[0]) ? ip : "—");
+	lv_label_set_text(net_ssid_lbl, (ssid && ssid[0]) ? ssid : "Sem conexao");
+	lv_label_set_text(net_ip_lbl,   (ip && ip[0]) ? ip : "-");
 	lv_screen_load(net_scr);
 }
 
 static const char *const wday_name[7] = {
-	"Sunday", "Monday", "Tuesday", "Wednesday",
-	"Thursday", "Friday", "Saturday",
+	"Domingo", "Segunda-feira", "Terca-feira", "Quarta-feira",
+	"Quinta-feira", "Sexta-feira", "Sabado",
 };
 
 static const char *const month_name[12] = {
-	"January", "February", "March", "April", "May", "June",
-	"July", "August", "September", "October", "November", "December",
+	"Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
+	"Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 };
 
 static void format_hhmm(int32_t hour24, int32_t min, bool use_24h,
@@ -334,11 +337,11 @@ static void format_alarm_line(char *buf, size_t len)
 
 	format_hhmm(alarm_hour, alarm_min, clock_24h,
 		    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
-	snprintf(buf, len, "Alarm %s%s%s  %s",
+	snprintf(buf, len, "Alarme %s%s%s  %s",
 		 time_buf,
 		 suffix[0] ? " " : "",
 		 suffix,
-		 alarm_enabled ? "ON" : "OFF");
+		 alarm_enabled ? "LIGADO" : "DESLIGADO");
 }
 
 static void update_clock_status_locked(void)
@@ -422,13 +425,13 @@ static void render_clk_locked(void)
 		gmtime_r(&local, &tm);
 		format_hhmm(tm.tm_hour, tm.tm_min, clock_24h,
 			    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
-		snprintf(date_buf, sizeof(date_buf), "%s, %d %s %d%s%s",
+		snprintf(date_buf, sizeof(date_buf), "%s, %d de %s de %d%s%s",
 			 wday_name[tm.tm_wday % 7], tm.tm_mday,
 			 month_name[tm.tm_mon % 12], tm.tm_year + 1900,
 			 suffix[0] ? "  " : "", suffix);
 	} else {
 		strncpy(time_buf, "--:--", sizeof(time_buf));
-		strncpy(date_buf, "Waiting for time sync...", sizeof(date_buf));
+		strncpy(date_buf, "Aguardando horario...", sizeof(date_buf));
 	}
 
 	lv_label_set_text(clk_date_lbl,  date_buf);
@@ -457,13 +460,13 @@ static void render_alarm_locked(void)
 		gmtime_r(&local, &tm);
 		format_hhmm(tm.tm_hour, tm.tm_min, clock_24h,
 			    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
-		snprintf(date_buf, sizeof(date_buf), "%s, %d %s %d",
+		snprintf(date_buf, sizeof(date_buf), "%s, %d de %s de %d",
 			 wday_name[tm.tm_wday % 7], tm.tm_mday,
 			 month_name[tm.tm_mon % 12], tm.tm_year + 1900);
 	} else {
 		strncpy(time_buf, "--:--", sizeof(time_buf));
 		suffix[0] = '\0';
-		strncpy(date_buf, "Waiting for time sync...", sizeof(date_buf));
+		strncpy(date_buf, "Aguardando horario...", sizeof(date_buf));
 	}
 
 	format_tz_label(tz_buf, sizeof(tz_buf));
@@ -577,7 +580,7 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 			signal_render();
 		} else if (btn == UI_BTN_2) {
 			/* Hard reset: wipe credentials + cold reboot */
-			device_ui_log_push("Forgetting WiFi credentials...");
+			device_ui_log_push("Esquecendo credenciais WiFi...");
 			wifi_prov_clear_credentials();
 			k_msleep(100);
 			sys_reboot(SYS_REBOOT_COLD);
@@ -636,7 +639,7 @@ static void check_alarm(void)
 
 	if (match && !alarm_fired) {
 		alarm_fired = true;
-		device_ui_log_push("*** ALARM ***");
+		device_ui_log_push("*** ALARME ***");
 		LOG_WRN("Alarm fired at %02d:%02d local", alarm_hour, alarm_min);
 	} else if (!match) {
 		alarm_fired = false;
@@ -688,81 +691,95 @@ static lv_obj_t *new_screen(void)
 	return s;
 }
 
-/* Dark title bar with left title + subtle top-button capsules. */
+/* Hard Mac drop-shadow box: a black shadow panel offset behind a white,
+ * black-bordered panel.  Returns the white box — add children to it.  The
+ * shadow is a solid offset (not a blur) so it stays deterministic on the EPD. */
+static lv_obj_t *mac_box(lv_obj_t *parent, int32_t x, int32_t y,
+			 int32_t w, int32_t h)
+{
+	lv_obj_t *sh = panel(parent, w, h);
+
+	lv_obj_set_pos(sh, x + 3, y + 3);
+	lv_obj_set_style_bg_color(sh, c_ink(), 0);
+
+	lv_obj_t *b = panel(parent, w, h);
+
+	lv_obj_set_pos(b, x, y);
+	lv_obj_set_style_bg_color(b, c_paper(), 0);
+	lv_obj_set_style_border_width(b, 2, 0);
+	lv_obj_set_style_border_color(b, c_ink(), 0);
+	lv_obj_set_style_border_opa(b, LV_OPA_COVER, 0);
+	return b;
+}
+
+/* Distinct Mac title bar (mirrors the HLSS top bar): a framed white box with a
+ * Chicago title.  A small down-chevron + separator hints that the top physical
+ * buttons cycle the device screens / exit; nav affordance sits unintrusively to
+ * the right.  This is the one prominent bar — the rest of the screen is plain. */
 static void build_header(lv_obj_t *scr, const char *title)
 {
-	static const char *const top_labels[8] = {
-		NULL, NULL, NULL, NULL, "<", ">", "ENT", "ESC"
-	};
-	const int32_t cw = SCR_W / 8;
-	const int32_t gap = 6;
-	const int32_t slot_h = 24;
-	lv_obj_t *bar = panel(scr, SCR_W, HDR_H);
+	const int32_t bx = 6, by = 6, bw = SCR_W - 12, bh = HDR_H - 14;
+	lv_obj_t *bar = mac_box(scr, bx, by, bw, bh);
 
-	lv_obj_set_pos(bar, 0, 0);
-	lv_obj_set_style_bg_color(bar, c_ink(), 0);
+	lv_obj_t *chev = lv_label_create(bar);
+
+	lv_obj_set_style_text_color(chev, c_ink(), 0);
+	lv_obj_set_style_text_font(chev, &lv_font_montserrat_14, 0);
+	lv_label_set_text(chev, LV_SYMBOL_DOWN);
+	lv_obj_align(chev, LV_ALIGN_LEFT_MID, 14, 0);
+
+	lv_obj_t *sep = panel(bar, 1, bh - 18);
+
+	lv_obj_set_style_bg_color(sep, c_ink(), 0);
+	lv_obj_align(sep, LV_ALIGN_LEFT_MID, 38, 0);
 
 	lv_obj_t *t = lv_label_create(bar);
 
-	lv_obj_set_style_text_color(t, c_paper(), 0);
-	lv_obj_set_style_text_font(t, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_color(t, c_ink(), 0);
+	lv_obj_set_style_text_font(t, &chicago_18, 0);
 	lv_label_set_text(t, title);
-	lv_obj_align(t, LV_ALIGN_LEFT_MID, 20, 0);
+	lv_obj_align(t, LV_ALIGN_LEFT_MID, 52, 0);
 
-	for (int32_t i = 0; i < 8; i++) {
-		const char *label = top_labels[i];
-		lv_obj_t *slot;
+	lv_obj_t *nav = lv_label_create(bar);
 
-		if (!label) {
-			continue;
-		}
-
-		slot = panel(bar, cw - gap, slot_h);
-
-		lv_obj_set_style_bg_color(slot, c_ink(), 0);
-		lv_obj_set_style_bg_opa(slot, LV_OPA_COVER, 0);
-		lv_obj_set_style_border_width(slot, 1, 0);
-		lv_obj_set_style_border_color(slot, c_gray(0x58), 0);
-		lv_obj_set_style_radius(slot, 4, 0);
-		lv_obj_set_pos(slot, i * cw + gap / 2, (HDR_H - slot_h) / 2);
-
-		lv_obj_t *txt = lv_label_create(slot);
-
-		lv_obj_set_style_text_color(txt, c_gray(0xB8), 0);
-		lv_obj_set_style_text_font(txt, &lv_font_montserrat_14, 0);
-		lv_label_set_text(txt, label);
-		lv_obj_center(txt);
-	}
+	lv_obj_set_style_text_color(nav, c_gray(0x55), 0);
+	lv_obj_set_style_text_font(nav, &geneva_14, 0);
+	lv_label_set_text(nav, "<  >  screen     ESC  exit");
+	lv_obj_align(nav, LV_ALIGN_RIGHT_MID, -14, 0);
 }
 
-/* Bottom strip of 8 key-caps aligned under the physical BTN_1..8. */
+/* Bottom soft-key strip — a light dithered-gray band (classic Mac desktop)
+ * carrying white Mac key-caps under the physical BTN_1..8.  The gray is a
+ * single deterministic level; empty slots show the bare band. */
 static void build_softkeys(lv_obj_t *scr, const char *const labels[8])
 {
 	const int32_t cw  = SCR_W / 8; /* 100 px per key */
-	const int32_t gap = 6;
+	const int32_t gap = 8;
 
 	lv_obj_t *strip = panel(scr, SCR_W, FTR_H);
 
 	lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, 0);
-	lv_obj_set_style_bg_color(strip, c_paper(), 0);
+	lv_obj_set_style_bg_color(strip, c_gray(0xB0), 0);
+
+	lv_obj_t *edge = panel(strip, SCR_W, 2);
+
+	lv_obj_set_style_bg_color(edge, c_ink(), 0);
+	lv_obj_set_pos(edge, 0, 0);
 
 	for (int32_t i = 0; i < 8; i++) {
-		bool used = labels[i] && labels[i][0];
-		lv_obj_t *cap = panel(strip, cw - gap, FTR_H - gap * 2);
-
-		lv_obj_set_pos(cap, i * cw + gap / 2, gap);
-		lv_obj_set_style_radius(cap, 8, 0);
-		lv_obj_set_style_bg_color(cap, used ? c_ink() : c_gray(0xC8), 0);
-
-		if (!used) {
+		if (!(labels[i] && labels[i][0])) {
 			continue;
 		}
 
+		int32_t kw = cw - 2 * gap;
+		int32_t kh = FTR_H - 2 * gap - 4;
+		lv_obj_t *cap = mac_box(strip, i * cw + gap, gap + 2, kw, kh);
+
 		lv_obj_t *l = lv_label_create(cap);
 
-		lv_obj_set_style_text_color(l, c_paper(), 0);
-		lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-		lv_obj_set_width(l, cw - gap - 8);
+		lv_obj_set_style_text_color(l, c_ink(), 0);
+		lv_obj_set_style_text_font(l, &geneva_14, 0);
+		lv_obj_set_width(l, kw - 10);
 		lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
 		lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
 		lv_label_set_text(l, labels[i]);
@@ -776,19 +793,19 @@ static void build_softkeys(lv_obj_t *scr, const char *const labels[8])
 
 static void build_log_scr(void)
 {
-	static const char *const keys[8] = { "Clear", 0, 0, 0, 0, 0, 0, 0 };
+	static const char *const keys[8] = { "Limpar", 0, 0, 0, 0, 0, 0, 0 };
 
 	log_scr = new_screen();
-	build_header(log_scr, "System Log");
+	build_header(log_scr, "Registro");
 	build_softkeys(log_scr, keys);
 
 	log_content = lv_label_create(log_scr);
 	lv_obj_set_style_text_color(log_content, c_ink(), 0);
-	lv_obj_set_style_text_font(log_content, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_font(log_content, &geneva_9, 0);
 	lv_obj_set_size(log_content, SCR_W - 32, SCR_H - HDR_H - FTR_H - 16);
 	lv_label_set_long_mode(log_content, LV_LABEL_LONG_WRAP);
 	lv_obj_set_pos(log_content, 16, CONTENT_Y + 8);
-	lv_label_set_text(log_content, "Booting...");
+	lv_label_set_text(log_content, "Iniciando...");
 }
 
 static void build_field(lv_obj_t *scr, const char *caption, int32_t y,
@@ -797,15 +814,15 @@ static void build_field(lv_obj_t *scr, const char *caption, int32_t y,
 	lv_obj_t *cap = lv_label_create(scr);
 
 	lv_obj_set_style_text_color(cap, c_gray(0x66), 0);
-	lv_obj_set_style_text_font(cap, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_font(cap, &geneva_14, 0);
 	lv_label_set_text(cap, caption);
 	lv_obj_set_pos(cap, 40, y);
 
 	lv_obj_t *val = lv_label_create(scr);
 
 	lv_obj_set_style_text_color(val, c_ink(), 0);
-	lv_obj_set_style_text_font(val, &lv_font_montserrat_28, 0);
-	lv_label_set_text(val, "—");
+	lv_obj_set_style_text_font(val, &chicago_18, 0);
+	lv_label_set_text(val, "-");
 	lv_obj_set_pos(val, 40, y + 22);
 	*value_out = val;
 }
@@ -813,15 +830,15 @@ static void build_field(lv_obj_t *scr, const char *caption, int32_t y,
 static void build_net_scr(void)
 {
 	static const char *const keys[8] = {
-		"AP Mode", "Forget WiFi", 0, 0, 0, 0, 0, 0
+		"Modo AP", "Esquecer WiFi", 0, 0, 0, 0, 0, 0
 	};
 
 	net_scr = new_screen();
-	build_header(net_scr, "Network");
+	build_header(net_scr, "Rede");
 	build_softkeys(net_scr, keys);
 
-	build_field(net_scr, "WI-FI NETWORK", CONTENT_Y + 40, &net_ssid_lbl);
-	build_field(net_scr, "IP ADDRESS",    CONTENT_Y + 130, &net_ip_lbl);
+	build_field(net_scr, "REDE WI-FI", CONTENT_Y + 40, &net_ssid_lbl);
+	build_field(net_scr, "ENDERECO IP",    CONTENT_Y + 130, &net_ip_lbl);
 }
 
 static void build_clk_scr(void)
@@ -832,14 +849,14 @@ static void build_clk_scr(void)
 	int32_t metrics_icon_top;
 
 	clk_scr = new_screen();
-	build_header(clk_scr, "Clock");
+	build_header(clk_scr, "Relogio");
 
 	clk_date_lbl = lv_label_create(clk_scr);
 	lv_obj_set_width(clk_date_lbl, SCR_W);
 	lv_obj_set_style_text_color(clk_date_lbl, c_gray(0x66), 0);
-	lv_obj_set_style_text_font(clk_date_lbl, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_font(clk_date_lbl, &chicago_18, 0);
 	lv_obj_set_style_text_align(clk_date_lbl, LV_TEXT_ALIGN_CENTER, 0);
-	lv_label_set_text(clk_date_lbl, "—");
+	lv_label_set_text(clk_date_lbl, "-");
 
 	clk_time_bg_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_time_bg_lbl, c_gray(0xD0), 0);
@@ -872,13 +889,13 @@ static void build_clk_scr(void)
 
 	clk_status_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_status_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_status_lbl, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_font(clk_status_lbl, &geneva_14, 0);
 	lv_label_set_text(clk_status_lbl, "");
 	lv_obj_align(clk_status_lbl, LV_ALIGN_TOP_RIGHT, -20, CONTENT_Y + 14);
 
 	clk_power_lbl = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_power_lbl, c_gray(0x66), 0);
-	lv_obj_set_style_text_font(clk_power_lbl, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_font(clk_power_lbl, &geneva_14, 0);
 	lv_label_set_text(clk_power_lbl, "");
 	lv_obj_align(clk_power_lbl, LV_ALIGN_TOP_RIGHT, -94, CONTENT_Y + 14);
 
@@ -890,7 +907,7 @@ static void build_clk_scr(void)
 
 	clk_temp_widgets.value = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_temp_widgets.value, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_temp_widgets.value, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_font(clk_temp_widgets.value, &chicago_18, 0);
 	lv_label_set_text(clk_temp_widgets.value, "");
 	lv_obj_add_flag(clk_temp_widgets.value, LV_OBJ_FLAG_HIDDEN);
 
@@ -902,7 +919,7 @@ static void build_clk_scr(void)
 
 	clk_humidity_widgets.value = lv_label_create(clk_scr);
 	lv_obj_set_style_text_color(clk_humidity_widgets.value, c_ink(), 0);
-	lv_obj_set_style_text_font(clk_humidity_widgets.value, &lv_font_montserrat_28, 0);
+	lv_obj_set_style_text_font(clk_humidity_widgets.value, &chicago_18, 0);
 	lv_label_set_text(clk_humidity_widgets.value, "");
 	lv_obj_add_flag(clk_humidity_widgets.value, LV_OBJ_FLAG_HIDDEN);
 
@@ -921,36 +938,36 @@ static void build_clk_scr(void)
 static void build_alarm_scr(void)
 {
 	static const char *const keys[8] = {
-		"Hour +", "Hour -", "Min +", "Min -",
-		"Alarm On/Off", "24/12", "TZ +", "TZ -"
+		"Hora +", "Hora -", "Min +", "Min -",
+		"Liga/Desl", "24/12", "Fuso +", "Fuso -"
 	};
 
 	alm_scr = new_screen();
-	build_header(alm_scr, "Alarm");
+	build_header(alm_scr, "Alarme");
 	build_softkeys(alm_scr, keys);
 
 	alm_date_lbl = lv_label_create(alm_scr);
 	lv_obj_set_style_text_color(alm_date_lbl, c_gray(0x66), 0);
-	lv_obj_set_style_text_font(alm_date_lbl, &lv_font_montserrat_28, 0);
-	lv_label_set_text(alm_date_lbl, "—");
+	lv_obj_set_style_text_font(alm_date_lbl, &chicago_18, 0);
+	lv_label_set_text(alm_date_lbl, "-");
 	lv_obj_align(alm_date_lbl, LV_ALIGN_TOP_MID, 0, CONTENT_Y + 24);
 
 	alm_time_lbl = lv_label_create(alm_scr);
 	lv_obj_set_style_text_color(alm_time_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(alm_time_lbl, &lv_font_montserrat_48, 0);
+	lv_obj_set_style_text_font(alm_time_lbl, &chicago_18, 0);
 	lv_label_set_text(alm_time_lbl, "--:--");
 	lv_obj_align(alm_time_lbl, LV_ALIGN_CENTER, 0, -34);
 
 	alm_meta_lbl = lv_label_create(alm_scr);
 	lv_obj_set_style_text_color(alm_meta_lbl, c_gray(0x66), 0);
-	lv_obj_set_style_text_font(alm_meta_lbl, &lv_font_montserrat_14, 0);
+	lv_obj_set_style_text_font(alm_meta_lbl, &geneva_14, 0);
 	lv_label_set_text(alm_meta_lbl, "UTC+0  |  24H");
 	lv_obj_align(alm_meta_lbl, LV_ALIGN_CENTER, 0, 20);
 
 	alm_alarm_lbl = lv_label_create(alm_scr);
 	lv_obj_set_style_text_color(alm_alarm_lbl, c_ink(), 0);
-	lv_obj_set_style_text_font(alm_alarm_lbl, &lv_font_montserrat_28, 0);
-	lv_label_set_text(alm_alarm_lbl, "Alarm --:-- ON");
+	lv_obj_set_style_text_font(alm_alarm_lbl, &chicago_18, 0);
+	lv_label_set_text(alm_alarm_lbl, "Alarme --:-- LIGADO");
 	lv_obj_align(alm_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -FTR_H - 24);
 }
 
