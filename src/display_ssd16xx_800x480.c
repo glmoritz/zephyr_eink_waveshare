@@ -42,11 +42,10 @@ LOG_MODULE_REGISTER(custom_ssd16xx_800x480, CONFIG_DISPLAY_LOG_LEVEL);
 #define SSD16XX_CMD_MASTER_ACTIVATION     0x20
 #define SSD16XX_CMD_DEEP_SLEEP            0x10
 
+#if CONFIG_LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
 /*
  * 4-gray waveform LUT from the Waveshare 3.7" SSD16xx-family panel.
  * Same controller family as our 3.97" panel. Send via SSD16XX_CMD_WRITE_LUT (105 bytes).
- * After loading, use SSD16XX_CMD_DISP_UPDATE_CTRL2 = 0xCF (custom LUT, 4-gray mode 2),
- * NOT 0xF7 (OTP LUT, which only uses the BW RAM and ignores the RED RAM).
  */
 static const uint8_t lut_4gray_gc[105] = {
 	0x2A, 0x06, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 1 */
@@ -61,6 +60,7 @@ static const uint8_t lut_4gray_gc[105] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 10 */
 	0x22, 0x22, 0x22, 0x22, 0x22,                               /* gate */
 };
+#endif
 
 /* Fixed geometry for this 800x480 driver */
 #define CUSTOM_SSD16XX_COLS      (800U / 8U)  /* 100 bytes per row */
@@ -72,7 +72,7 @@ static const uint8_t lut_4gray_gc[105] = {
  * refresh earlier (e.g. HLSS switch). Tune for the deployed panel/temperature.
  */
 #ifndef CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL
-#define CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL 20U
+#define CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL CUSTOM_SSD16XX_DEFAULT_FULL_REFRESH_INTERVAL
 #endif
 
 struct custom_ssd16xx_config {
@@ -98,6 +98,9 @@ struct custom_ssd16xx_data {
 	bool prev_valid;
 	enum custom_ssd16xx_color_mode color_mode;
 	uint32_t partial_count;
+	/* Auto full-refresh floor: force a full once partial_count reaches this.
+	 * 0 disables the floor (app owns fulls — see set_full_refresh_interval). */
+	uint32_t full_refresh_interval;
 
 	/* Ordered dithering during L8->2bpp conversion (see header). Off for
 	 * pre-dithered server frames, on for device-local UI. */
@@ -321,15 +324,19 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 		return err;
 	}
 
-	/* Load 4-gray waveform LUT into controller registers */
-	LOG_DBG("Loading 4-gray LUT");
+#if CONFIG_LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
+	LOG_DBG("Loading custom 4-gray LUT");
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_LUT, lut_4gray_gc, sizeof(lut_4gray_gc));
 	if (err < 0) {
 		return err;
 	}
 
-	/* Display Update Control 2: 0xCF = clock on, load LUT, 4-gray mode 2 */
+	/* Display Update Control 2: 0xCF = custom LUT full refresh */
 	tmp[0] = 0xCF;
+#else
+	/* Display Update Control 2: 0xF7 = controller OTP/integrated waveform */
+	tmp[0] = 0xF7;
+#endif
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -464,11 +471,21 @@ int custom_ssd16xx_refresh_partial(const struct device *dev)
 	 * ghosting. Any of these falls back to a full refresh.
 	 */
 	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
-	    data->partial_count >= CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL) {
+	    (data->full_refresh_interval != 0U &&
+	     data->partial_count >= data->full_refresh_interval)) {
 		return custom_ssd16xx_do_full(dev);
 	}
 
 	return custom_ssd16xx_do_partial(dev);
+}
+
+int custom_ssd16xx_set_full_refresh_interval(const struct device *dev,
+					     uint32_t interval)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	data->full_refresh_interval = interval;
+	return 0;
 }
 
 int custom_ssd16xx_set_color_mode(const struct device *dev,
@@ -664,6 +681,7 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 		.prev_valid = false, \
 		.color_mode = CUSTOM_SSD16XX_MONO, \
 		.partial_count = 0, \
+		.full_refresh_interval = CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL, \
 	}; \
 	DEVICE_DT_INST_DEFINE(inst, custom_ssd16xx_init, NULL, \
 		&custom_ssd16xx_data_##inst, &custom_ssd16xx_cfg_##inst, \

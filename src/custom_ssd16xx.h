@@ -27,6 +27,26 @@ int custom_ssd16xx_refresh_full(const struct device *dev);
  */
 int custom_ssd16xx_refresh_partial(const struct device *dev);
 
+/* Default automatic full-refresh floor: number of consecutive partials after
+ * which custom_ssd16xx_refresh_partial() forces a full refresh to clear
+ * accumulated ghosting.
+ */
+#define CUSTOM_SSD16XX_DEFAULT_FULL_REFRESH_INTERVAL 20U
+
+/*
+ * Override the automatic full-refresh floor at runtime.
+ *
+ * `interval` == 0 DISABLES the auto-floor entirely: partial refreshes never
+ * self-promote to full, leaving the application in complete control of when
+ * fulls happen (via custom_ssd16xx_refresh_full() / UI_CTX_SWITCH). Used by
+ * the screensaver, which schedules its own flashes (e.g. on the wall-clock
+ * half-hour) and must not be interrupted by the floor. Any non-zero value sets
+ * a new floor; CUSTOM_SSD16XX_DEFAULT_FULL_REFRESH_INTERVAL restores the
+ * default. The change takes effect on the next refresh.
+ */
+int custom_ssd16xx_set_full_refresh_interval(const struct device *dev,
+					     uint32_t interval);
+
 /* Declare the color mode of the framebuffer. A change forces the next refresh
  * to be full (panel waveform state must be reset across a mode transition).
  */

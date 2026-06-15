@@ -45,6 +45,18 @@ enum ui_refresh_ctx {
 void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx);
 
 /**
+ * Enable/disable the panel's automatic full-refresh floor (the ghosting
+ * backstop that force-promotes a partial to full every N partials).
+ *
+ * Disable (false) when a screen owns its own flash schedule — e.g. the
+ * screensaver clock, which flashes only on the wall-clock half-hour and must
+ * not be interrupted by an off-schedule auto-full. Re-enable (true) on exit to
+ * restore the default ghosting backstop. Scheduled flashes meanwhile go
+ * through ui_lvgl_flush(_, UI_CTX_SWITCH). Thread-safe; takes effect next refresh.
+ */
+void ui_auto_full_refresh(bool enable);
+
+/**
  * Initialise LVGL, create the main server-frame screen, start the
  * device UI on the log screen.  Call once from main() after the kernel is up.
  */

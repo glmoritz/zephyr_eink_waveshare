@@ -51,6 +51,15 @@ bool device_ui_is_active(void);
 void device_ui_show_main(void);
 
 /**
+ * Called by the display thread (lvgl_mutex held) on every new server frame.
+ * Resets the screensaver idle timer and counts the frame as pending
+ * (unacknowledged until a keypress).  If the screensaver is currently showing,
+ * switches back to the main screen (auto-return) and returns true so the caller
+ * loads the main screen and does a full refresh.  Returns false otherwise.
+ */
+bool device_ui_note_server_frame(void);
+
+/**
  * Called from the LLSS thread after settings_subsys_init() + settings_load().
  * Enables alarm persistence (settings_save_one calls before this are no-ops).
  */

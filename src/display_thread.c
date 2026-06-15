@@ -248,6 +248,22 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 #endif
 }
 
+void ui_auto_full_refresh(bool enable)
+{
+#if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+	const struct device *disp = DEVICE_DT_GET(DISPLAY_NODE);
+
+	if (device_is_ready(disp)) {
+		/* enable -> restore the default ghosting floor; disable -> 0, so
+		 * the app owns every full (the screensaver schedules its own). */
+		custom_ssd16xx_set_full_refresh_interval(
+			disp, enable ? CUSTOM_SSD16XX_DEFAULT_FULL_REFRESH_INTERVAL : 0U);
+	}
+#else
+	ARG_UNUSED(enable);
+#endif
+}
+
 /* =========================================================================
  * Frame rendering
  * ========================================================================= */
@@ -320,12 +336,23 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 	server_frame_visible = true;
 	main_status_hide_locked();
 
+	/* New-frame bookkeeping: resets the screensaver idle timer, counts the
+	 * frame as pending, and auto-returns from the screensaver if it is showing
+	 * (in which case we must load the main screen and force a full refresh). */
+	bool saver_returned = device_ui_note_server_frame();
+
+	if (saver_returned) {
+		lv_screen_load(lvgl_main_scr);
+	}
+
 	/* Only flush if the main screen is actually visible. Server frames are
 	 * already dithered to pure B/W by the server — do not re-dither, and they
-	 * are mono, so they are partial-refresh capable. The very first frame also
-	 * switches screens, so force a full there. */
+	 * are mono, so they are partial-refresh capable. The first frame and a
+	 * screensaver auto-return both switch screens, so force a full there. */
 	if (!device_ui_is_active()) {
-		ui_lvgl_flush(false, was_first ? UI_CTX_SWITCH : UI_CTX_SERVER);
+		ui_lvgl_flush(false,
+			      (was_first || saver_returned) ? UI_CTX_SWITCH
+							    : UI_CTX_SERVER);
 	}
 }
 

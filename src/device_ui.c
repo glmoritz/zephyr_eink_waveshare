@@ -90,9 +90,35 @@ enum dev_screen {
 	SCR_NETWORK,
 	SCR_CLOCK,
 	SCR_ALARM,
+	SCR_SAVER,
 };
 
 static atomic_t active_scr = ATOMIC_INIT(SCR_MAIN);
+
+/* ---- Screensaver --------------------------------------------------------
+ * After SAVER_IDLE_TIMEOUT_S with no new server frame AND no keypress, the
+ * server (main) screen falls back to an ambient clock; any key returns. While
+ * the saver owns the screen it also owns the full-refresh cadence (the driver's
+ * auto ghosting-floor is suspended via ui_auto_full_refresh(false)): SAVER_IDLE
+ * flashes only on the wall-clock half-hour, SAVER_NOTIFIED (unacknowledged
+ * frames pending) flashes every SAVER_NOTIFIED_FLASH_MIN and shows a banner +
+ * bell.  "notified" = screensaver with frames that arrived since the last key. */
+#define SAVER_IDLE_TIMEOUT_S      600  /* 10 min */
+#define SAVER_IDLE_FLASH_MIN      30   /* idle: full flash on :00 / :30 */
+#define SAVER_NOTIFIED_FLASH_MIN  10   /* notified: full flash every 10 min */
+
+static atomic_t saver_last_activity_s = ATOMIC_INIT(0);
+static atomic_t saver_pending_frames  = ATOMIC_INIT(0);
+
+static int64_t now_s(void)
+{
+	return k_uptime_get() / 1000;
+}
+
+static void saver_mark_activity(void)
+{
+	atomic_set(&saver_last_activity_s, (atomic_val_t)now_s());
+}
 
 /* =========================================================================
  * LVGL objects
@@ -132,6 +158,15 @@ static lv_obj_t *alm_date_lbl;
 static lv_obj_t *alm_time_lbl;
 static lv_obj_t *alm_meta_lbl;
 static lv_obj_t *alm_alarm_lbl;
+
+/* Screensaver screen */
+static lv_obj_t *sav_scr;
+static lv_obj_t *sav_date_lbl;
+static lv_obj_t *sav_time_lbl;
+static lv_obj_t *sav_temp_lbl;
+static lv_obj_t *sav_banner;      /* solid-black notification bar (hidden in idle) */
+static lv_obj_t *sav_bell_lbl;    /* bell icon inside the banner                   */
+static lv_obj_t *sav_banner_lbl;  /* white knockout text inside the banner         */
 
 #define CLK_GHOST_TEXT "88:88"
 
@@ -483,6 +518,91 @@ static void render_alarm_locked(void)
 	lv_screen_load(alm_scr);
 }
 
+/* True if this minute is a scheduled full-refresh "flash" mark for the saver:
+ * every 30 min (:00/:30) when idle, every 10 min when notified. */
+static bool saver_flash_due(bool notified)
+{
+	struct timespec ts;
+
+	if (!(sys_flag_get() & SYS_FLAG_TIME_VALID) ||
+	    sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0) {
+		/* No clock to schedule against — rely on the entry/exit fulls. */
+		return false;
+	}
+
+	time_t local = ts.tv_sec + (time_t)(tz_offset * 3600);
+	struct tm tm;
+
+	gmtime_r(&local, &tm);
+	int32_t step = notified ? SAVER_NOTIFIED_FLASH_MIN : SAVER_IDLE_FLASH_MIN;
+
+	return (tm.tm_min % step) == 0;
+}
+
+static void render_saver_locked(void)
+{
+	char time_buf[8];
+	char date_buf[48];
+	char suffix[4];
+	struct timespec ts = {0};
+	struct tm tm = {0};
+	bool have_time = (sys_flag_get() & SYS_FLAG_TIME_VALID) &&
+			 sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) == 0;
+
+	if (have_time) {
+		time_t local = ts.tv_sec + (time_t)(tz_offset * 3600);
+
+		gmtime_r(&local, &tm);
+		format_hhmm(tm.tm_hour, tm.tm_min, clock_24h,
+			    time_buf, sizeof(time_buf), suffix, sizeof(suffix));
+		snprintf(date_buf, sizeof(date_buf), "%s, %d de %s%s%s",
+			 wday_name[tm.tm_wday % 7], tm.tm_mday,
+			 month_name[tm.tm_mon % 12],
+			 suffix[0] ? "  " : "", suffix);
+	} else {
+		strncpy(time_buf, "--:--", sizeof(time_buf));
+		strncpy(date_buf, "Aguardando horario...", sizeof(date_buf));
+	}
+
+	lv_label_set_text(sav_date_lbl, date_buf);
+	lv_label_set_text(sav_time_lbl, time_buf);
+
+	struct shtc3_data sd;
+
+	if (shtc3_get_latest(&sd) && sd.has_sample &&
+	    (sd.status == SHTC3_DATA_VALID || sd.status == SHTC3_DATA_SIMULATED)) {
+		char tbuf[24];
+
+		snprintk(tbuf, sizeof(tbuf), "%d.%01d C",
+			 sd.temperature_centi_c / 100,
+			 abs((sd.temperature_centi_c / 10) % 10));
+		lv_label_set_text(sav_temp_lbl, tbuf);
+	} else {
+		lv_label_set_text(sav_temp_lbl, "");
+	}
+
+	int32_t pending = (int32_t)atomic_get(&saver_pending_frames);
+
+	if (pending > 0) {
+		char nbuf[56];
+
+		if (pending == 1) {
+			snprintf(nbuf, sizeof(nbuf),
+				 "Nova tela  -  pressione qualquer tecla");
+		} else {
+			snprintf(nbuf, sizeof(nbuf),
+				 "%d novas telas  -  pressione qualquer tecla",
+				 pending);
+		}
+		lv_label_set_text(sav_banner_lbl, nbuf);
+		lv_obj_remove_flag(sav_banner, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(sav_banner, LV_OBJ_FLAG_HIDDEN);
+	}
+
+	lv_screen_load(sav_scr);
+}
+
 static void device_ui_render_locked(void)
 {
 	switch ((enum dev_screen)atomic_get(&active_scr)) {
@@ -490,6 +610,7 @@ static void device_ui_render_locked(void)
 	case SCR_NETWORK: render_net_locked();               break;
 	case SCR_CLOCK:   render_clk_locked();               break;
 	case SCR_ALARM:   render_alarm_locked();             break;
+	case SCR_SAVER:   render_saver_locked();             break;
 	case SCR_MAIN:    lv_screen_load(main_scr_ref);      break;
 	}
 }
@@ -519,6 +640,20 @@ static bool alarm_apply_btn_locked(enum ui_btn btn)
 bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 {
 	enum dev_screen scr = (enum dev_screen)atomic_get(&active_scr);
+
+	/* Any input is user activity: defer the screensaver and acknowledge pending
+	 * frames so the next idle entry is the quiet idle clock (not notified). */
+	saver_mark_activity();
+	atomic_set(&saver_pending_frames, 0);
+
+	/* Screensaver is up: any key dismisses it back to the server screen and is
+	 * NOT forwarded (the wake key just brings the device back). */
+	if (scr == SCR_SAVER) {
+		ui_auto_full_refresh(true);  /* restore the driver ghosting floor */
+		atomic_set(&active_scr, SCR_MAIN);
+		signal_render();
+		return true;
+	}
 
 	/* From the main (server) screen, only the trigger is intercepted. */
 	if (scr == SCR_MAIN) {
@@ -971,6 +1106,55 @@ static void build_alarm_scr(void)
 	lv_obj_align(alm_alarm_lbl, LV_ALIGN_BOTTOM_MID, 0, -FTR_H - 24);
 }
 
+/* Screensaver: a clean, full-bleed ambient clock (no Mac chrome) with a
+ * reserved bottom notification band — a solid-black bar + bell + white text
+ * shown only when frames are pending (SAVER_NOTIFIED). */
+static void build_saver_scr(void)
+{
+	sav_scr = new_screen();
+
+	sav_date_lbl = lv_label_create(sav_scr);
+	lv_obj_set_width(sav_date_lbl, SCR_W);
+	lv_obj_set_style_text_color(sav_date_lbl, c_gray(0x66), 0);
+	lv_obj_set_style_text_font(sav_date_lbl, &chicago_18, 0);
+	lv_obj_set_style_text_align(sav_date_lbl, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_text(sav_date_lbl, "-");
+	lv_obj_align(sav_date_lbl, LV_ALIGN_TOP_MID, 0, 56);
+
+	sav_time_lbl = lv_label_create(sav_scr);
+	lv_obj_set_style_text_color(sav_time_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(sav_time_lbl, &dseg_bold_italic_200, 0);
+	lv_obj_set_style_text_letter_space(sav_time_lbl, 0, 0);
+	lv_label_set_text(sav_time_lbl, "--:--");
+	lv_obj_align(sav_time_lbl, LV_ALIGN_CENTER, 0, -20);
+
+	sav_temp_lbl = lv_label_create(sav_scr);
+	lv_obj_set_width(sav_temp_lbl, SCR_W);
+	lv_obj_set_style_text_color(sav_temp_lbl, c_gray(0x44), 0);
+	lv_obj_set_style_text_font(sav_temp_lbl, &chicago_18, 0);
+	lv_obj_set_style_text_align(sav_temp_lbl, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_text(sav_temp_lbl, "");
+	lv_obj_align(sav_temp_lbl, LV_ALIGN_CENTER, 0, 130);
+
+	/* Notification band — hidden in idle mode. */
+	sav_banner = panel(sav_scr, SCR_W, 76);
+	lv_obj_set_style_bg_color(sav_banner, c_ink(), 0);
+	lv_obj_align(sav_banner, LV_ALIGN_BOTTOM_MID, 0, 0);
+	lv_obj_add_flag(sav_banner, LV_OBJ_FLAG_HIDDEN);
+
+	sav_bell_lbl = lv_label_create(sav_banner);
+	lv_obj_set_style_text_color(sav_bell_lbl, c_paper(), 0);
+	lv_obj_set_style_text_font(sav_bell_lbl, &material_design_40, 0);
+	lv_label_set_text(sav_bell_lbl, ICON_NOTIFICATION);
+	lv_obj_align(sav_bell_lbl, LV_ALIGN_LEFT_MID, 28, 0);
+
+	sav_banner_lbl = lv_label_create(sav_banner);
+	lv_obj_set_style_text_color(sav_banner_lbl, c_paper(), 0);
+	lv_obj_set_style_text_font(sav_banner_lbl, &chicago_18, 0);
+	lv_label_set_text(sav_banner_lbl, "Nova tela");
+	lv_obj_center(sav_banner_lbl);
+}
+
 /* =========================================================================
  * Render thread
  * ========================================================================= */
@@ -1034,9 +1218,25 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 		/* A bare clock tick only needs to repaint the time-bearing screens;
 		 * other screens are static until the next input signal. */
 		enum dev_screen scr = (enum dev_screen)atomic_get(&active_scr);
-		bool is_clock = (scr == SCR_CLOCK || scr == SCR_ALARM);
 
-		if (!signaled && !is_clock) {
+		/* Idle fallback: from the server screen, after SAVER_IDLE_TIMEOUT_S
+		 * with no new frame and no keypress, drop into the screensaver — but
+		 * only once real content has been shown (don't hide boot/auth status). */
+		bool entering_saver = false;
+
+		if (scr == SCR_MAIN && ui_has_server_frame() &&
+		    (now_s() - (int64_t)atomic_get(&saver_last_activity_s)) >=
+			    SAVER_IDLE_TIMEOUT_S) {
+			ui_auto_full_refresh(false);  /* saver owns the flash cadence */
+			atomic_set(&active_scr, SCR_SAVER);
+			scr = SCR_SAVER;
+			entering_saver = true;
+		}
+
+		bool is_ticking = (scr == SCR_CLOCK || scr == SCR_ALARM ||
+				   scr == SCR_SAVER);
+
+		if (!signaled && !is_ticking) {
 			continue;
 		}
 
@@ -1052,12 +1252,26 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 
 		prev_scr = scr;
 
-		/* Dither only screens that use real gray (clock/alarm ghost
+		/* Dither only screens that use real gray (clock/alarm/saver ghost
 		 * segments); pure-text screens stay crisp B/W since dithering
 		 * muddies small anti-aliased text. */
-		bool dither = (scr == SCR_CLOCK || scr == SCR_ALARM);
+		bool dither = (scr == SCR_CLOCK || scr == SCR_ALARM ||
+			       scr == SCR_SAVER);
 
-		ui_lvgl_flush(dither, switched ? UI_CTX_SWITCH : UI_CTX_UI);
+		enum ui_refresh_ctx ctx;
+
+		if (scr == SCR_SAVER) {
+			/* The saver owns its flashes: full on entry and on the
+			 * scheduled wall-clock mark; partial for plain minute ticks. */
+			bool notified = atomic_get(&saver_pending_frames) > 0;
+
+			ctx = (entering_saver || switched ||
+			       saver_flash_due(notified)) ? UI_CTX_SWITCH : UI_CTX_UI;
+		} else {
+			ctx = switched ? UI_CTX_SWITCH : UI_CTX_UI;
+		}
+
+		ui_lvgl_flush(dither, ctx);
 		k_mutex_unlock(&lvgl_mutex);
 	}
 }
@@ -1079,8 +1293,10 @@ void device_ui_init(lv_obj_t *main_scr)
 	build_net_scr();
 	build_clk_scr();
 	build_alarm_scr();
+	build_saver_scr();
 
 	atomic_set(&active_scr, SCR_MAIN);
+	saver_mark_activity();   /* start the idle timer from boot, not from 0 */
 	lv_screen_load(main_scr_ref);
 }
 
@@ -1089,6 +1305,22 @@ void device_ui_show_main(void)
 	/* Called with lvgl_mutex held by the display thread.
 	 * Just update the atomic; the caller loads the screen itself. */
 	atomic_set(&active_scr, SCR_MAIN);
+}
+
+bool device_ui_note_server_frame(void)
+{
+	/* Display thread holds lvgl_mutex. A new frame is backend activity: reset
+	 * the idle timer and count it as pending (unacknowledged until a keypress). */
+	saver_mark_activity();
+	atomic_inc(&saver_pending_frames);
+
+	if ((enum dev_screen)atomic_get(&active_scr) == SCR_SAVER) {
+		/* Auto-return: leave the screensaver to show the new frame. */
+		ui_auto_full_refresh(true);   /* restore the driver ghosting floor */
+		atomic_set(&active_scr, SCR_MAIN);
+		return true;
+	}
+	return false;
 }
 
 void device_ui_settings_ready(void)
