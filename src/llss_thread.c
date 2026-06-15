@@ -480,21 +480,27 @@ static enum app_state do_register(void)
 
 static enum app_state do_wait_authorization(void)
 {
-	ui_log_push("Aguardando autorizacao no portal admin");
-	ui_server_status_show(ICON_PENDING,
-		"Aprovacao necessaria",
-		"Autorize este dispositivo no portal admin para continuar.");
-
-	/* If we reached WAITING without ever having a device_secret (most
-	 * likely we came here from a 409 on /register), there is nothing to
-	 * authenticate with.  Sleep, then retry /register — the admin may
-	 * have cleared the server-side record in the meantime, which lets
-	 * the next register attempt succeed cleanly. */
+	/* If we reached WAITING without ever having a device_secret, we came
+	 * here from a 409 on /register: the server already has a record for
+	 * this hardware_id but we hold no secret, so there is nothing to
+	 * authenticate with.  Authorizing in the portal will NOT help — the
+	 * admin must REMOVE/reset the device record, after which our next
+	 * register attempt succeeds cleanly.  Show that instruction and retry
+	 * /register periodically so we auto-recover once the record is cleared. */
 	if (!device_secret[0]) {
+		ui_log_push("Ja registrado. Peca ao admin para remover o dispositivo.");
+		ui_server_status_show(ICON_PENDING,
+			"Ja registrado no servidor",
+			"Peca ao admin para remover este dispositivo, depois aguarde.");
 		LOG_INF("No device_secret stored — retrying /register in 30s");
 		k_msleep(30000);
 		return STATE_REGISTERING;
 	}
+
+	ui_log_push("Aguardando autorizacao no portal admin");
+	ui_server_status_show(ICON_PENDING,
+		"Aprovacao necessaria",
+		"Autorize este dispositivo no portal admin para continuar.");
 
 	int32_t rc = session_ensure();
 
