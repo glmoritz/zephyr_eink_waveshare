@@ -21,7 +21,7 @@
 #include <zephyr/net/tls_credentials.h>
 #include <zephyr/sys/clock.h>
 
-LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_INF);
 
 /* =========================================================================
  * Compile-time constants derived from Kconfig
@@ -502,7 +502,30 @@ static int http_response_cb(struct http_response *rsp,
 		ctx->http_status = rsp->http_status_code;
 	}
 
-	if (rsp->body_frag_len > 0 && ctx->buf && !ctx->overflow) {
+	/* Length of the contiguous body fragment in recv_buf for THIS call.
+	 *
+	 * Don't trust rsp->body_frag_len directly: when the whole response
+	 * arrives in a single recv and http_client's parser hands the body to
+	 * its on_body callback in more than one fragment (chunked TE, or a body
+	 * split at a record/buffer edge), http_client fires this callback only
+	 * once (HTTP_DATA_FINAL) and leaves body_frag_len set to the LAST
+	 * fragment's length while body_frag_start still points at the FIRST
+	 * fragment — so trusting body_frag_len under-copies the body. The
+	 * documented invariant (see struct http_response) is
+	 *     body_frag_len == data_len - (body_frag_start - recv_buf)
+	 * which always describes the full contiguous body region in recv_buf, so
+	 * recompute it that way. Our server returns Content-Length-delimited JSON
+	 * (contiguous body), so this recovers the complete body in every case. */
+	size_t frag_len = 0;
+	if (rsp->body_frag_start != NULL && rsp->recv_buf != NULL) {
+		size_t body_off = (size_t)(rsp->body_frag_start - rsp->recv_buf);
+
+		if (rsp->data_len > body_off) {
+			frag_len = rsp->data_len - body_off;
+		}
+	}
+
+	if (frag_len > 0 && ctx->buf && !ctx->overflow) {
 		if (!ctx->saw_body) {
 			ctx->saw_body = true;
 			ctx->first_body_ms = k_uptime_get();
@@ -512,11 +535,11 @@ static int http_response_cb(struct http_response *rsp,
 		size_t room = (ctx->buf_size > ctx->len + 1)
 				      ? ctx->buf_size - ctx->len - 1
 				      : 0;
-		size_t copy = MIN(rsp->body_frag_len, room);
+		size_t copy = MIN(frag_len, room);
 
 		memcpy(ctx->buf + ctx->len, rsp->body_frag_start, copy);
 		ctx->len += copy;
-		if (copy < rsp->body_frag_len) {
+		if (copy < frag_len) {
 			ctx->overflow = true;
 			LOG_WRN("HTTP response truncated");
 		}
