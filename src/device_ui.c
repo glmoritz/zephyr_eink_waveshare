@@ -106,9 +106,16 @@ static atomic_t active_scr = ATOMIC_INIT(SCR_MAIN);
 #define SAVER_IDLE_TIMEOUT_S      600  /* 10 min */
 #define SAVER_IDLE_FLASH_MIN      30   /* idle: full flash on :00 / :30 */
 #define SAVER_NOTIFIED_FLASH_MIN  10   /* notified: full flash every 10 min */
+/* A server frame counts as "seen" if the user pressed a button within this
+ * window of it being shown — before (they clicked and are watching the result)
+ * or after (they reacted to it). A frame with no nearby keypress was only
+ * passively shown, so the idle saver should announce it as a pending screen. */
+#define SAVER_SEEN_WINDOW_S       60   /* 1 min, either side of the frame */
 
 static atomic_t saver_last_activity_s = ATOMIC_INIT(0);
 static atomic_t saver_pending_frames  = ATOMIC_INIT(0);
+/* Uptime (s) of the last keypress — used for the "seen within 1 min" test. */
+static atomic_t saver_last_key_s      = ATOMIC_INIT(0);
 
 static int64_t now_s(void)
 {
@@ -641,9 +648,11 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 {
 	enum dev_screen scr = (enum dev_screen)atomic_get(&active_scr);
 
-	/* Any input is user activity: defer the screensaver and acknowledge pending
-	 * frames so the next idle entry is the quiet idle clock (not notified). */
+	/* Any input is user activity: defer the screensaver, stamp the keypress
+	 * time (so a frame arriving within SAVER_SEEN_WINDOW_S counts as seen), and
+	 * acknowledge any pending frames — the user is engaged and caught up. */
 	saver_mark_activity();
+	atomic_set(&saver_last_key_s, (atomic_val_t)now_s());
 	atomic_set(&saver_pending_frames, 0);
 
 	/* Screensaver is up: any key dismisses it back to the server screen and is
@@ -1229,12 +1238,12 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 		    (now_s() - (int64_t)atomic_get(&saver_last_activity_s)) >=
 			    SAVER_IDLE_TIMEOUT_S) {
 			ui_auto_full_refresh(false);  /* saver owns the flash cadence */
-			/* Every server frame was already rendered on the main screen and
-			 * seen by the user, so dropping into the idle saver must NOT claim
-			 * "new screen pending" — that's the quiet idle clock. Frames that
-			 * arrive later, while the saver is up, auto-return to main
-			 * (device_ui_note_server_frame) to show themselves. */
-			atomic_set(&saver_pending_frames, 0);
+			/* Enter notified or idle based on saver_pending_frames, which now
+			 * counts only frames that were shown without a keypress within
+			 * SAVER_SEEN_WINDOW_S (i.e. passively shown, not seen). Frames that
+			 * arrive later while the saver is up auto-return to main to show
+			 * themselves; if still unacknowledged 10 min on, the saver re-enters
+			 * notified. */
 			atomic_set(&active_scr, SCR_SAVER);
 			scr = SCR_SAVER;
 			entering_saver = true;
@@ -1317,9 +1326,15 @@ void device_ui_show_main(void)
 bool device_ui_note_server_frame(void)
 {
 	/* Display thread holds lvgl_mutex. A new frame is backend activity: reset
-	 * the idle timer and count it as pending (unacknowledged until a keypress). */
+	 * the idle timer. Count it as a pending (unseen) frame ONLY if the user
+	 * hasn't pressed a button within SAVER_SEEN_WINDOW_S before it — if they
+	 * just clicked, this frame is the result they're watching, i.e. seen. A
+	 * keypress within the window *after* the frame clears pending via the input
+	 * handler. */
 	saver_mark_activity();
-	atomic_inc(&saver_pending_frames);
+	if ((now_s() - (int64_t)atomic_get(&saver_last_key_s)) > SAVER_SEEN_WINDOW_S) {
+		atomic_inc(&saver_pending_frames);
+	}
 
 	if ((enum dev_screen)atomic_get(&active_scr) == SCR_SAVER) {
 		/* Auto-return: leave the screensaver to show the new frame. */
