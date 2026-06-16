@@ -1229,6 +1229,12 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 		    (now_s() - (int64_t)atomic_get(&saver_last_activity_s)) >=
 			    SAVER_IDLE_TIMEOUT_S) {
 			ui_auto_full_refresh(false);  /* saver owns the flash cadence */
+			/* Every server frame was already rendered on the main screen and
+			 * seen by the user, so dropping into the idle saver must NOT claim
+			 * "new screen pending" — that's the quiet idle clock. Frames that
+			 * arrive later, while the saver is up, auto-return to main
+			 * (device_ui_note_server_frame) to show themselves. */
+			atomic_set(&saver_pending_frames, 0);
 			atomic_set(&active_scr, SCR_SAVER);
 			scr = SCR_SAVER;
 			entering_saver = true;
