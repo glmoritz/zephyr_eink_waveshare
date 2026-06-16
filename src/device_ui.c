@@ -1159,7 +1159,8 @@ static void build_saver_scr(void)
  * Render thread
  * ========================================================================= */
 
-#define DEVICE_UI_STACK    4096
+/* Was 4096 — observed 4080/4096 (99%) live; bumped to leave headroom. */
+#define DEVICE_UI_STACK    8192
 #define DEVICE_UI_PRIORITY 14
 
 /* A burst of rapid log pushes (e.g. during boot) must not each trigger a
