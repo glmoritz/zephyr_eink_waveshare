@@ -25,17 +25,32 @@ LOG_MODULE_REGISTER(llss_storage, LOG_LEVEL_DBG);
 #define KEY_REFRESH_TOKEN  "llss/refresh_token"
 #define KEY_ACCESS_TOKEN   "llss/access_token"
 
-/* RTC slow RAM — survives deep sleep, cleared on cold boot / power loss.
- * If rtc_cache_magic == LLSS_STORAGE_RTC_MAGIC the buffers below hold valid
- * credentials from the previous wake cycle and llss_storage_init() skips
- * the Settings/NVS flash read entirely. */
+/* Reserved for the future deep-sleep resume fast path: a cold-boot-safe magic
+ * in RTC slow RAM. When deep sleep lands, the wake path can stash the
+ * credentials in an RTC mirror guarded by this magic and skip the NVS read.
+ * Kept (unused for now) so that work doesn't start from scratch. */
 #define LLSS_STORAGE_RTC_MAGIC  0x4C535343U  /* 'LSSC' */
+static uint32_t rtc_cache_magic LLSS_RTC_NOINIT;
 
-static uint32_t rtc_cache_magic                       LLSS_RTC_NOINIT;
-static char  cache_device_id[LLSS_DEVICE_ID_MAX]      LLSS_RTC_NOINIT;
-static char  cache_device_secret[LLSS_DEVICE_SECRET_MAX] LLSS_RTC_NOINIT;
-static char  cache_refresh_token[LLSS_TOKEN_MAX]      LLSS_RTC_NOINIT;
-static char  cache_access_token[LLSS_TOKEN_MAX]       LLSS_RTC_NOINIT;
+/* In-memory cache of the credentials stored in NVS, rebuilt on every boot.
+ *
+ * These MUST live in internal DRAM (plain .bss), NOT RTC slow RAM or PSRAM.
+ * On the ESP32-S3 (non-MCUboot build) the flash driver passes the caller's
+ * buffer straight to IDF esp_flash_read()/esp_flash_write(), which require a
+ * destination in internal DRAM (esp_ptr_in_dram()); Zephyr provides no
+ * bounce-buffer hook. A buffer in RTC RAM (0x5000_0000) or PSRAM fails that
+ * check and the flash op returns ESP_ERR_NO_MEM (-EIO) — so NVS could neither
+ * load the credentials at boot nor save them during the session, and the
+ * device had to be re-registered after every reboot.
+ *
+ * DEEP-SLEEP NOTE: do NOT move these back into .rtc_noinit. The resume path
+ * must keep flash I/O pointed at these DRAM buffers and copy to/from a
+ * separate RTC mirror (rtc_cache_magic above), never read/write NVS straight
+ * into RTC RAM, or this ESP_ERR_NO_MEM bug returns. */
+static char  cache_device_id[LLSS_DEVICE_ID_MAX];
+static char  cache_device_secret[LLSS_DEVICE_SECRET_MAX];
+static char  cache_refresh_token[LLSS_TOKEN_MAX];
+static char  cache_access_token[LLSS_TOKEN_MAX];
 
 /* =========================================================================
  * settings_handler
@@ -84,11 +99,8 @@ static struct settings_handler llss_handler = {
 
 int llss_storage_init(void)
 {
-	/* RTC-RAM fast path is disabled until we have a cold-boot-safe magic.
-	 * .rtc_noinit survives deep sleep but is uninitialised on cold boot,
-	 * so the magic word can randomly match LLSS_STORAGE_RTC_MAGIC and the
-	 * code below would trust uninitialised RAM as valid credentials.
-	 * Always re-read from NVS; rebuild the in-memory cache from scratch. */
+	/* Rebuild the in-memory cache from NVS on every boot. The RTC fast path
+	 * is not wired up yet (reserved for deep sleep); invalidate its magic. */
 	memset(cache_device_id,     0, sizeof(cache_device_id));
 	memset(cache_device_secret, 0, sizeof(cache_device_secret));
 	memset(cache_refresh_token, 0, sizeof(cache_refresh_token));

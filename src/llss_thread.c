@@ -43,6 +43,12 @@ LOG_MODULE_REGISTER(llss, LOG_LEVEL_INF);
 #define LLSS_THREAD_STACK    16384
 #define LLSS_THREAD_PRIORITY 10
 
+/* Consecutive HTTP 401/403 (-EACCES) full-auth failures tolerated before we
+ * assume the server has dropped this device's record and self-heal by wiping
+ * the stale credentials and re-registering. Guards against a transient 401
+ * nuking otherwise-valid credentials. */
+#define LLSS_CRED_REJECT_RESET_THRESHOLD 3
+
 /* =========================================================================
  * State machine
  * ========================================================================= */
@@ -71,6 +77,10 @@ static char refresh_token[LLSS_TOKEN_MAX];
 static char access_token[LLSS_TOKEN_MAX];
 static char hardware_id[16];
 static char last_frame_id[64];
+
+/* Count of consecutive full-auth credential rejections (see self-heal in
+ * do_full_auth). Reset to 0 on any successful authentication. */
+static int auth_reject_streak;
 
 static int32_t poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
 
@@ -421,6 +431,19 @@ static void update_access_token(const char *token)
 	llss_storage_save_access_token(access_token);
 }
 
+/* Drop all locally-held credentials (NVS + in-memory) so the next boot/loop
+ * re-registers from scratch. Used by the self-heal path when the server no
+ * longer recognises this device's credentials. */
+static void wipe_local_credentials(void)
+{
+	llss_storage_clear();
+	device_id[0]     = '\0';
+	device_secret[0] = '\0';
+	refresh_token[0] = '\0';
+	access_token[0]  = '\0';
+	auth_reject_streak = 0;
+}
+
 /* =========================================================================
  * State handlers — each runs one step and returns
  * ========================================================================= */
@@ -610,6 +633,7 @@ static enum app_state do_authenticate(void)
 			llss_storage_save_tokens(refresh_token, access_token);
 			update_access_token(new_access);
 			sys_flag_set(SYS_FLAG_LLSS_AUTHORIZED);
+			auth_reject_streak = 0;
 			LOG_INF("Authenticated — polling");
 			return STATE_POLLING;
 		}
@@ -618,12 +642,33 @@ static enum app_state do_authenticate(void)
 		return STATE_AUTHENTICATING;
 	} else if (rc == 0 && auth_status == LLSS_AUTH_PENDING) {
 		return STATE_WAITING_AUTHORIZATION;
-	} else if (auth_status == LLSS_AUTH_REJECTED ||
-		   auth_status == LLSS_AUTH_REVOKED || rc == -EACCES) {
+	} else if (rc == 0 && (auth_status == LLSS_AUTH_REJECTED ||
+			       auth_status == LLSS_AUTH_REVOKED)) {
+		/* Deliberate server-side reject/revoke (HTTP 200 with an explicit
+		 * status). Respect the admin decision — do NOT re-register. */
 		session_close_on_net_error(-EACCES);
 		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
 		ui_log_push("Dispositivo rejeitado, contate o admin");
 		return STATE_ERROR;
+	} else if (rc == -EACCES) {
+		/* HTTP 401/403: the server does not recognise our credentials at
+		 * all — most likely the device record was deleted server-side,
+		 * leaving us with a stale device_id/secret we can never use. After
+		 * a few consecutive failures (guard against a transient 401),
+		 * self-heal: wipe local credentials and re-register from scratch. */
+		session_close_on_net_error(-EACCES);
+		sys_flag_clear(SYS_FLAG_LLSS_AUTHORIZED);
+		if (++auth_reject_streak < LLSS_CRED_REJECT_RESET_THRESHOLD) {
+			LOG_WRN("Credentials rejected (%d/%d) — retry in 5s",
+				auth_reject_streak,
+				LLSS_CRED_REJECT_RESET_THRESHOLD);
+			k_msleep(5000);
+			return STATE_AUTHENTICATING;
+		}
+		LOG_WRN("Credentials no longer valid — wiping and re-registering");
+		ui_log_push("Credenciais invalidas, registrando novamente...");
+		wipe_local_credentials();
+		return STATE_REGISTERING;
 	}
 
 	session_close_on_net_error(rc);
