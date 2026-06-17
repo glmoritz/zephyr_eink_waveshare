@@ -356,7 +356,7 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 
 static void session_check_reset(void)
 {
-	if (atomic_cas(&session_reset_requested, 1, 0) && session_open) {
+	if (atomic_cas(&session_reset_requested, 1, 0)) {
 		llss_session_close();
 		session_open = false;
 	}
@@ -364,10 +364,6 @@ static void session_check_reset(void)
 
 static int session_ensure(void)
 {
-	if (session_open) {
-		return 0;
-	}
-
 	int32_t rc = llss_session_open();
 
 	if (rc == 0) {
@@ -652,6 +648,12 @@ static enum app_state do_send_input(const struct button_event *bev)
 			     ui_evt_llss_name(bev->evt), &input);
 	session_close_on_net_error(rc);
 
+	/* DIAG: what did send_input actually return? Tells us whether the
+	 * device acts on a synchronous NEW_FRAME (fast) or falls back to POLL
+	 * and only sees the frame on the next ~poll_interval cycle (~5 s). */
+	printk("DIAG send_input rc=%d status=%d frame_id='%s' poll_after=%d\n",
+	       rc, input.status, input.frame_id, input.poll_after_ms);
+
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
 	}
@@ -763,12 +765,18 @@ static enum app_state do_fetch_frame(void)
 
 	/* Fetch straight into a display pipeline buffer — no copy. */
 	size_t cap = 0;
+	int64_t t_wb0 = k_uptime_get();
 	uint8_t *dst = display_frame_write_buf(&cap);
 	size_t png_len = 0;
 
+	int64_t t_fetch0 = k_uptime_get();
 	rc = llss_fetch_frame(access_token, device_id, last_frame_id,
 			      dst, cap, &png_len);
+	int64_t t_fetch1 = k_uptime_get();
 	session_close_on_net_error(rc);
+	printk("DIAG fetch: write_buf=%lldms http_fetch=%lldms rc=%d png_len=%zu\n",
+	       (long long)(t_fetch0 - t_wb0), (long long)(t_fetch1 - t_fetch0),
+	       rc, png_len);
 
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
@@ -794,7 +802,10 @@ static enum app_state do_fetch_frame(void)
 #endif
 
 	if (png_len > 0) {
+		int64_t t_sub0 = k_uptime_get();
 		int32_t drc = display_frame_submit(png_len);
+		printk("DIAG submit: %lldms drc=%d\n",
+		       (long long)(k_uptime_get() - t_sub0), drc);
 
 		if (drc < 0) {
 			LOG_ERR("Frame submit failed: %d", drc);

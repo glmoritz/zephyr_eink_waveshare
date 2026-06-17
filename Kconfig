@@ -38,6 +38,14 @@ config LLSS_DISPLAY_BIT_DEPTH
 	  return PNG frames instead of raw packed buffers. PNG is decoded
 	  on device via LVGL's lodepng integration.
 
+config LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
+	bool "Use custom full-refresh SSD16xx LUT"
+	default y
+	help
+	  Keep the custom 4-gray full-refresh waveform LUT for the hardware
+	  SSD16xx panel driver. Disable this to use the controller's integrated
+	  OTP full-refresh waveform instead.
+
 config LLSS_TOP_STRIP_HEIGHT
 	int "Top button-label strip height (px) reported to server"
 	default 64
@@ -75,6 +83,28 @@ config LLSS_NTP_SYNC_INTERVAL_S
 config LLSS_HTTP_TIMEOUT_MS
 	int "HTTP request timeout in milliseconds"
 	default 15000
+
+config LLSS_HTTP_RECV_SCRATCH_SIZE
+	int "HTTP response scratch buffer size in bytes"
+	default 65535
+	help
+	  Size of the temporary HTTP parser scratch buffer used by llss_client.
+	  This does not need to hold the full frame body; it only needs enough
+	  space for response headers plus streamed body fragments. Keep this
+	  modest on ESP32-S3 to avoid burning tens of kilobytes of static RAM.
+	  64 KB is a performance-oriented setting for the 48 KB raw LLSS frame
+	  path, allowing the client to drain the full response without a parser
+	  scratch cap.
+
+config LLSS_HTTP_SOCKET_RCVBUF_SIZE
+	int "LLSS TLS socket receive buffer size in bytes"
+	default 65535
+	range 1024 65535
+	help
+	  Requested SO_RCVBUF value for the LLSS TLS socket. In Zephyr this
+	  determines the TCP receive window when NET_CONTEXT_RCVBUF is enabled.
+	  Keep this aligned with the HTTP scratch buffer so the client can drain
+	  each advertised window in a single recv call.
 
 config LLSS_FRAME_BUF_SIZE
 	int "Maximum frame buffer size in bytes (PNG)"

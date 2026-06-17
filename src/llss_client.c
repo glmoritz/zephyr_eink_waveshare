@@ -45,7 +45,7 @@ static uint8_t json_recv_buf[JSON_BUF_SIZE];
  * 2 KB easily holds the response headers; the body streams through in
  * fragments. Single-threaded request path (llss_thread), so a shared static is
  * fine, matching json_recv_buf. */
-#define HTTP_RECV_SCRATCH 2048
+#define HTTP_RECV_SCRATCH CONFIG_LLSS_HTTP_RECV_SCRATCH_SIZE
 static uint8_t http_recv_scratch[HTTP_RECV_SCRATCH];
 
 /* =========================================================================
@@ -360,6 +360,14 @@ static int connect_tls_addr(const struct sockaddr *addr, socklen_t addrlen)
 		return -errno;
 	}
 
+	int32_t rcvbuf = CONFIG_LLSS_HTTP_SOCKET_RCVBUF_SIZE;
+
+	rc = zsock_setsockopt(sock, SOL_SOCKET, SO_RCVBUF,
+				     &rcvbuf, sizeof(rcvbuf));
+	if (rc < 0) {
+		LOG_WRN("SO_RCVBUF=%d failed: %d", rcvbuf, errno);
+	}
+
 	zsock_setsockopt(sock, SOL_TLS, TLS_SEC_TAG_LIST,
 			 tls_tags, sizeof(tls_tags));
 	zsock_setsockopt(sock, SOL_TLS, TLS_HOSTNAME,
@@ -489,7 +497,11 @@ struct resp_ctx {
 	int32_t  http_status;
 	bool     overflow;
 	bool     saw_body;
+	uint32_t body_frag_count;
+	size_t   total_frag_bytes;
 	int64_t  first_body_ms;
+	int64_t  last_body_ms;
+	int64_t  max_body_gap_ms;
 };
 
 static int http_response_cb(struct http_response *rsp,
@@ -526,10 +538,23 @@ static int http_response_cb(struct http_response *rsp,
 	}
 
 	if (frag_len > 0 && ctx->buf && !ctx->overflow) {
+		int64_t now_ms = k_uptime_get();
+
 		if (!ctx->saw_body) {
 			ctx->saw_body = true;
-			ctx->first_body_ms = k_uptime_get();
+			ctx->first_body_ms = now_ms;
+		} else {
+			int64_t gap_ms = now_ms - ctx->last_body_ms;
+
+			if (gap_ms > ctx->max_body_gap_ms) {
+				ctx->max_body_gap_ms = gap_ms;
+			}
 		}
+
+		ctx->last_body_ms = now_ms;
+
+		ctx->body_frag_count++;
+		ctx->total_frag_bytes += frag_len;
 
 		/* Leave 1 byte for NUL terminator in JSON buffers */
 		size_t room = (ctx->buf_size > ctx->len + 1)
@@ -574,6 +599,7 @@ static int do_request(enum http_method method, const char *path,
 		      uint8_t *recv_buf, size_t recv_buf_size,
 		      size_t *body_len_out)
 {
+	int64_t req_start_ms = k_uptime_get();
 	/* Phase A: reuse persistent session socket if one is open. */
 	bool owned_sock = (session_sock < 0);
 	int32_t sock = owned_sock ? open_tls_socket() : session_sock;
@@ -637,6 +663,26 @@ static int do_request(enum http_method method, const char *path,
 	};
 
 	int32_t rc = http_client_req(sock, &req, CONFIG_LLSS_HTTP_TIMEOUT_MS, &ctx);
+	int64_t req_end_ms = k_uptime_get();
+	bool is_frame_fetch = (method == HTTP_GET) && (strstr(path, "/frames/") != NULL);
+
+	if (is_frame_fetch) {
+		int64_t first_body_ms = ctx.saw_body ? (ctx.first_body_ms - req_start_ms) : -1;
+		int64_t body_tail_ms = ctx.saw_body ? (req_end_ms - ctx.first_body_ms) : -1;
+
+		LOG_INF("DIAG http frames: path=%s reuse=%d total=%lldms first_body=%lldms tail=%lldms max_gap=%lldms frag_count=%u frag_bytes=%zu status=%d rc=%d body=%zu",
+			path, !owned_sock,
+			(long long)(req_end_ms - req_start_ms),
+			(long long)first_body_ms,
+			(long long)body_tail_ms,
+			(long long)ctx.max_body_gap_ms,
+			ctx.body_frag_count,
+			ctx.total_frag_bytes,
+			ctx.http_status,
+			rc,
+			ctx.len);
+	}
+
 	if (owned_sock) {
 		int64_t close_start_ms = k_uptime_get();
 
