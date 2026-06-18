@@ -33,6 +33,7 @@
 #include "display_thread.h"
 #include "material_icons.h"
 #include "section_attrs.h"
+#include "sys_watchdog.h"
 
 #if defined(CONFIG_LLSS_PATTERN_TEST)
 #include "pattern_check.h"
@@ -366,8 +367,15 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 	ARG_UNUSED(arg2);
 	ARG_UNUSED(arg3);
 
+	/* Renders are quick; this thread is normally parked on the frame sem. The
+	 * idle/alive markers tell the liveness watchdog to watch only render time
+	 * (timeout 30 s) and ignore the unbounded idle wait. */
+	int disp_wdt = sys_wdt_register("display", 30000);
+
 	while (true) {
+		sys_wdt_idle(disp_wdt);
 		k_sem_take(&frame_work_sem, K_FOREVER);
+		sys_wdt_alive(disp_wdt);
 
 		/* Claim the latest mailbox frame into the render slot. */
 		k_mutex_lock(&fb_mutex, K_FOREVER);

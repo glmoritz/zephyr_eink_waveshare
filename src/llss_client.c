@@ -209,25 +209,22 @@ static void dns_result_cb(enum dns_resolve_status status,
 	}
 }
 
-static int ensure_dns_context_active(void)
+static void invalidate_cached_server_addr(void); /* defined below */
+
+/* Snapshot the currently-configured DNS servers (from the resolver context) as
+ * NUL-terminated strings into caller storage. Returns the count; servers[] is
+ * NULL-terminated. Used both to recover an inactive context and to reset a
+ * wedged one (dns_resolve_close clears ctx->servers, so we must copy first). */
+static int collect_dns_servers(
+	struct dns_resolve_context *ctx,
+	char buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN],
+	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1])
 {
-	struct dns_resolve_context *ctx = dns_resolve_get_default();
-
-	if (!ctx) {
-		return -ENOENT;
-	}
-
-	if (ctx->state == DNS_RESOLVE_CONTEXT_ACTIVE) {
-		return 0;
-	}
-
-	char server_buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN];
-	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
 	int32_t count = 0;
 
 	for (int32_t i = 0; i < ARRAY_SIZE(ctx->servers) &&
 		     count < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
-		char *dst = server_buf[count];
+		char *dst = buf[count];
 		struct sockaddr *sa = &ctx->servers[i].dns_server;
 
 		if (sa->sa_family == AF_INET) {
@@ -249,12 +246,30 @@ static int ensure_dns_context_active(void)
 		servers[count++] = dst;
 	}
 
+	servers[count] = NULL;
+	return count;
+}
+
+static int ensure_dns_context_active(void)
+{
+	struct dns_resolve_context *ctx = dns_resolve_get_default();
+
+	if (!ctx) {
+		return -ENOENT;
+	}
+
+	if (ctx->state == DNS_RESOLVE_CONTEXT_ACTIVE) {
+		return 0;
+	}
+
+	char server_buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN];
+	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
+	int32_t count = collect_dns_servers(ctx, server_buf, servers);
+
 	if (count == 0) {
 		LOG_WRN("DNS context inactive and no server addresses available yet");
 		return -ENOENT;
 	}
-
-	servers[count] = NULL;
 
 	int32_t ret = dns_resolve_init(ctx, servers, NULL);
 
@@ -266,6 +281,42 @@ static int ensure_dns_context_active(void)
 	LOG_DBG("DNS context recovered (%d server%s)",
 		count, count == 1 ? "" : "s");
 	return 0;
+}
+
+/* Soft network reset for the server-instability self-heal path: drop the cached
+ * server address and fully reinitialise the DNS resolver. A prolonged reconnect
+ * storm can wedge the resolver (concurrent-query slots stuck) so that even after
+ * the server returns every lookup yields "no results"; closing and re-initing
+ * the context with the same servers clears that. */
+void llss_client_net_reset(void)
+{
+	invalidate_cached_server_addr();
+	llss_session_close();
+
+	struct dns_resolve_context *ctx = dns_resolve_get_default();
+
+	if (!ctx) {
+		return;
+	}
+
+	char server_buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN];
+	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
+	int32_t count = collect_dns_servers(ctx, server_buf, servers);
+
+	(void)dns_resolve_close(ctx);
+
+	if (count > 0) {
+		int32_t ret = dns_resolve_init(ctx, servers, NULL);
+
+		if (ret < 0) {
+			LOG_ERR("DNS reset: dns_resolve_init failed: %d", ret);
+		} else {
+			LOG_WRN("DNS resolver reset (%d server%s)",
+				count, count == 1 ? "" : "s");
+		}
+	} else {
+		LOG_WRN("DNS reset: no servers to reinit (awaiting DHCP)");
+	}
 }
 
 static void invalidate_cached_server_addr(void)

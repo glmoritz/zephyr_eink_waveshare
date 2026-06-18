@@ -11,6 +11,7 @@
 #include <zephyr/sys/util.h>
 
 #include "system_flags.h"
+#include "sys_watchdog.h"
 
 LOG_MODULE_REGISTER(shtc3, LOG_LEVEL_INF);
 
@@ -202,7 +203,20 @@ static void shtc3_thread_fn(void *arg1, void *arg2, void *arg3)
 	ARG_UNUSED(arg2);
 	ARG_UNUSED(arg3);
 
+	/* Sampling is quick but the thread sleeps between samples (60 s) and far
+	 * longer when the sensor is unavailable (5 min). Mark those sleeping states
+	 * idle so the liveness watchdog watches only active sampling (timeout 30 s). */
+	int shtc3_wdt = sys_wdt_register("shtc3", 30000);
+
 	while (true) {
+		if (shtc3_state == STATE_SLEEPING ||
+		    shtc3_state == STATE_WAITING_DEVICE ||
+		    shtc3_state == STATE_SIMULATED) {
+			sys_wdt_idle(shtc3_wdt);
+		} else {
+			sys_wdt_alive(shtc3_wdt);
+		}
+
 		switch (shtc3_state) {
 		case STATE_BOOTING:
 			shtc3_state = do_boot();

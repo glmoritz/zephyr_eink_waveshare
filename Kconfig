@@ -151,6 +151,102 @@ config LLSS_PATTERN_TEST
 	  are obvious on the SDL/native_sim display. Temporary debugging aid;
 	  keep disabled for normal operation.
 
+config LLSS_NETMEM_DEBUG
+	bool "Periodic network/heap resource telemetry (temporary debug)"
+	default n
+	help
+	  Spawn a low-priority thread that periodically prints a single greppable
+	  "NETMEM" line over the console: net_pkt RX/TX slab free, net_buf RX/TX
+	  data pool avail/max, and (on ESP32) the IDF internal + PSRAM heap free.
+	  Used to chase the slow net-buffer/heap leak that panics the device after
+	  hours (esp32_wifi "unable to allocate net buffer"). Requires
+	  CONFIG_NET_BUF_POOL_USAGE=y for the avail counters. Debug aid; keep
+	  disabled for normal operation.
+
+config LLSS_NETMEM_DEBUG_INTERVAL_MS
+	int "NETMEM telemetry print interval in milliseconds"
+	default 30000
+	depends on LLSS_NETMEM_DEBUG
+
+config LLSS_WATCHDOG
+	bool "Connectivity watchdog (server-reachability self-heal escalation)"
+	default y
+	help
+	  Escalating self-heal when the device cannot reach the server while Wi-Fi
+	  is up: soft reset (session + DNS reinit) on an exponential backoff, then
+	  reboot as a last resort. Counters persist in RTC RAM across the reboot.
+	  Does NOT include the Task-WDT/hardware-WDT per-thread liveness layer yet.
+
+config LLSS_WATCHDOG_DRY_RUN
+	bool "Watchdog dry-run (log 'would reset now' instead of rebooting)"
+	default y
+	depends on LLSS_WATCHDOG
+	help
+	  While debugging, the reboot step only logs "WATCHDOG: would reset now ..."
+	  and advances its backoff schedule instead of calling sys_reboot(), so the
+	  escalation is observable without disrupting a capture. Set =n to arm real
+	  reboots.
+
+config LLSS_WATCHDOG_SOFT_RESET_BASE_S
+	int "Watchdog: first soft reset after this many seconds offline"
+	default 60
+	depends on LLSS_WATCHDOG
+
+config LLSS_WATCHDOG_SOFT_RESET_MAX_S
+	int "Watchdog: max interval between soft resets (exponential cap), seconds"
+	default 600
+	depends on LLSS_WATCHDOG
+
+config LLSS_WATCHDOG_REBOOT_BASE_S
+	int "Watchdog: first reboot after this many seconds offline"
+	default 300
+	depends on LLSS_WATCHDOG
+
+config LLSS_WATCHDOG_MAX_PERIOD_S
+	int "Watchdog: max reboot backoff period (exponential cap), seconds"
+	default 86400
+	depends on LLSS_WATCHDOG
+
+config LLSS_HW_WATCHDOG
+	bool "System liveness watchdog (supervisor thread + hardware WDT)"
+	default n
+	select WATCHDOG if !LLSS_HW_WATCHDOG_DRY_RUN
+	select WDT_ESP32 if (!LLSS_HW_WATCHDOG_DRY_RUN && SOC_FAMILY_ESPRESSIF_ESP32)
+	help
+	  A supervisor thread watches registered threads via sys_watchdog.h. Each
+	  thread marks itself alive while working and idle before an intentional
+	  blocking sleep (idle threads are ignored). A thread that stays active past
+	  its timeout is deemed hung. When armed (dry-run off) the supervisor feeds
+	  the ESP32 hardware WDT while healthy, so a hung thread or a hung supervisor
+	  triggers a hardware reset.
+
+	  Leave OFF while debugging: a hardware reset would erase a halted panic
+	  before it can be captured.
+
+config LLSS_HW_WATCHDOG_DRY_RUN
+	bool "Liveness watchdog dry-run (log 'would reset', no reboot, no HW WDT)"
+	default y
+	depends on LLSS_HW_WATCHDOG
+	help
+	  Supervisor logs "WATCHDOG: would reset now — '<thread>' starved" and keeps
+	  running instead of resetting, and the hardware WDT is not armed. Lets the
+	  liveness logic be observed without disrupting a capture. Set =n to arm
+	  real hardware-backed resets for production.
+
+config LLSS_HW_WATCHDOG_CHECK_MS
+	int "Liveness watchdog supervisor check interval (ms)"
+	default 5000
+	depends on LLSS_HW_WATCHDOG
+
+config LLSS_HW_WATCHDOG_HW_TIMEOUT_MS
+	int "Hardware WDT timeout (ms) when armed"
+	default 16000
+	depends on LLSS_HW_WATCHDOG
+	help
+	  Must exceed the supervisor check interval comfortably so a healthy
+	  supervisor always feeds the HW WDT in time; if the supervisor itself hangs,
+	  the HW WDT fires after this period.
+
 endmenu
 
 source "Kconfig.zephyr"

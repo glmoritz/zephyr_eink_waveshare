@@ -115,3 +115,10 @@
 &wifi {
 	status = "okay";
 };
+
+/* TIMG0 watchdog — used by the system liveness watchdog (CONFIG_LLSS_HW_WATCHDOG)
+ * when armed. Harmless when the watchdog is disabled or in dry-run (no driver
+ * bound unless CONFIG_WDT_ESP32 is selected). */
+&wdt0 {
+	status = "okay";
+};

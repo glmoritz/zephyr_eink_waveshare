@@ -31,6 +31,8 @@
 #include "llss_storage.h"
 #include "llss_thread.h"
 #include "material_icons.h"
+#include "net_watchdog.h"
+#include "sys_watchdog.h"
 #include "system_flags.h"
 #include "wifi_prov.h"
 
@@ -81,6 +83,15 @@ static char last_frame_id[64];
 /* Count of consecutive full-auth credential rejections (see self-heal in
  * do_full_auth). Reset to 0 on any successful authentication. */
 static int auth_reject_streak;
+
+/* Count of consecutive server-reachability failures while Wi-Fi is up (see
+ * note_server_failure). Reset to 0 on any successful server exchange. */
+static int net_fail_streak;
+
+/* Liveness-watchdog handle for this thread (CONFIG_LLSS_HW_WATCHDOG); -1 when
+ * disabled. Marked idle around the long blocking waits so an intentional poll/
+ * sleep wait is never mistaken for a hang. */
+static int llss_wdt = -1;
 
 static int32_t poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
 
@@ -444,6 +455,50 @@ static void wipe_local_credentials(void)
 	auth_reject_streak = 0;
 }
 
+/* Record a successful server exchange — clears the failure streak and the
+ * watchdog's offline/backoff escalation. */
+static void note_server_ok(void)
+{
+	net_fail_streak = 0;
+	net_watchdog_ok();
+}
+
+/* Record a server-reachability failure (a poll/fetch/input request failed).
+ *
+ * Distinguishes the two survivable outage classes the user cares about:
+ *   - Wi-Fi instability: SYS_FLAG_WIFI_READY is clear. The main loop blocks on
+ *     that flag at its top and llss_on_wifi(DISCONNECTED) already owns the
+ *     Wi-Fi-specific UI + session teardown, so we do nothing here.
+ *   - Server instability: Wi-Fi is up but the server is unreachable/erroring.
+ *     Report it distinctly, and after a few consecutive failures soft-reset the
+ *     session + DNS resolver (the storm can wedge the resolver so lookups keep
+ *     returning "no results" even after the server returns).
+ *
+ * The escalating self-heal (soft reset → reboot, minutes-scale exponential
+ * backoff) is delegated to the connectivity watchdog (net_watchdog_fail). */
+static void note_server_failure(void)
+{
+	if (!(sys_flag_get() & SYS_FLAG_WIFI_READY)) {
+		return; /* Wi-Fi down — not a server problem; wifi_prov path owns it. */
+	}
+
+	net_fail_streak++;
+
+	if (net_fail_streak == 1) {
+		ui_log_push("Servidor indisponivel, tentando reconectar...");
+		/* Don't clobber a displayed frame; show the status only when the
+		 * screen has nothing yet (matches the other status-screen calls).
+		 * A frame-overlay "offline" banner is the deferred UX feature. */
+		if (!last_frame_id[0]) {
+			ui_server_status_show(ICON_WARNING,
+				"Servidor indisponivel",
+				"Wi-Fi conectado, mas sem resposta do servidor. Tentando reconectar.");
+		}
+	}
+
+	net_watchdog_fail();
+}
+
 /* =========================================================================
  * State handlers — each runs one step and returns
  * ========================================================================= */
@@ -702,17 +757,24 @@ static enum app_state do_send_input(const struct button_event *bev)
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
 	}
-	if (rc < 0) {
+	if (rc != 0) {
+		/* rc < 0 = net error; rc > 0 = HTTP error status — both are failures
+		 * (don't read the unparsed response below). */
 		LOG_ERR("send_input error %d", rc);
+		note_server_failure();
 		return STATE_POLLING;
 	}
+
+	note_server_ok();
 
 	if (input.status == LLSS_INPUT_NEW_FRAME && input.frame_id[0]) {
 		strncpy(last_frame_id, input.frame_id,
 			sizeof(last_frame_id) - 1);
 		return STATE_FETCHING_FRAME;
 	} else if (input.status == LLSS_INPUT_POLL && input.poll_after_ms > 0) {
-		poll_interval_ms = input.poll_after_ms;
+		poll_interval_ms = CLAMP(input.poll_after_ms,
+					 CONFIG_LLSS_MIN_POLL_MS,
+					 CONFIG_LLSS_MAX_POLL_MS);
 	}
 	return STATE_POLLING;
 }
@@ -726,7 +788,14 @@ static enum app_state wait_button_or_poll(int32_t timeout_ms)
 {
 	struct button_event bev;
 
-	if (k_msgq_get(&btn_queue, &bev, K_MSEC(timeout_ms)) == 0) {
+	/* This blocking wait is intentional idle — don't let the liveness
+	 * watchdog count it as a hang. */
+	sys_wdt_idle(llss_wdt);
+	int got = k_msgq_get(&btn_queue, &bev, K_MSEC(timeout_ms));
+
+	sys_wdt_alive(llss_wdt);
+
+	if (got == 0) {
 		LOG_INF("Button: %s %s",
 			ui_btn_llss_name(bev.btn), ui_evt_llss_name(bev.evt));
 		return do_send_input(&bev);
@@ -739,6 +808,9 @@ static enum app_state do_poll(void)
 	int32_t rc = session_ensure();
 
 	if (rc < 0) {
+		/* Couldn't even open the session (DNS/connect failed). Back off via
+		 * the (never-zero) poll interval rather than spinning. */
+		note_server_failure();
 		return STATE_POLLING;
 	}
 
@@ -751,12 +823,23 @@ static enum app_state do_poll(void)
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
 	}
-	if (rc < 0) {
+	if (rc != 0) {
+		/* rc < 0 = network error; rc > 0 = HTTP error status (e.g. 502).
+		 * BOTH are failures — do NOT fall through and copy poll_after_ms out
+		 * of the unparsed (zeroed) state, which made poll_interval_ms 0 and
+		 * spun the loop at ~40 reconnects/s, starving net buffers and wedging
+		 * DNS. Keep the last good interval and back off. (do_request already
+		 * closed the session on http_status >= 400.) */
 		LOG_ERR("Poll error %d", rc);
+		note_server_failure();
 		return STATE_POLLING;
 	}
 
-	poll_interval_ms = state.poll_after_ms;
+	note_server_ok();
+	/* Only ever set from a *successful* parse, and clamp defensively so the
+	 * poll interval can never be 0 regardless of what the server sends. */
+	poll_interval_ms = CLAMP(state.poll_after_ms,
+				 CONFIG_LLSS_MIN_POLL_MS, CONFIG_LLSS_MAX_POLL_MS);
 
 	switch (state.action) {
 	case LLSS_ACTION_FETCH_FRAME:
@@ -805,6 +888,7 @@ static enum app_state do_fetch_frame(void)
 	int32_t rc = session_ensure();
 
 	if (rc < 0) {
+		note_server_failure();
 		return STATE_POLLING;
 	}
 
@@ -813,6 +897,15 @@ static enum app_state do_fetch_frame(void)
 	int64_t t_wb0 = k_uptime_get();
 	uint8_t *dst = display_frame_write_buf(&cap);
 	size_t png_len = 0;
+
+	/* Guard the destination: under net-buffer/heap exhaustion the pipeline can
+	 * hand back no buffer. Passing NULL/0 into the fetch (which writes the HTTP
+	 * body straight here) would be an unchecked deref — bail cleanly instead. */
+	if (dst == NULL || cap == 0) {
+		LOG_ERR("Frame write buffer unavailable (dst=%p cap=%zu)",
+			(void *)dst, cap);
+		return STATE_POLLING;
+	}
 
 	int64_t t_fetch0 = k_uptime_get();
 	rc = llss_fetch_frame(access_token, device_id, last_frame_id,
@@ -826,10 +919,14 @@ static enum app_state do_fetch_frame(void)
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
 	}
-	if (rc < 0) {
+	if (rc != 0) {
+		/* rc < 0 = net error / empty body; rc > 0 = HTTP error status. */
 		LOG_ERR("Fetch frame failed: %d", rc);
+		note_server_failure();
 		return STATE_POLLING;
 	}
+
+	note_server_ok();
 
 #if defined(CONFIG_LLSS_PATTERN_TEST)
 	/* CP1 — verify the bytes the HTTP layer delivered, before the buffer is
@@ -893,6 +990,10 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 		app_state = device_id[0] ? STATE_REFRESHING : STATE_REGISTERING;
 	}
 
+	/* Network thread: generous timeout covers a worst-case poll+fetch; the long
+	 * idle waits below are excused via sys_wdt_idle(). */
+	llss_wdt = sys_wdt_register("llss", 60000);
+
 	while (true) {
 		/* try / fail / wait.  If WiFi is up and clock is valid we
 		 * proceed; if either drops, we block here until both return.
@@ -902,7 +1003,11 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 		 * log instead of being silent — the wait is still blocking
 		 * for as long as needed. */
 		uint32_t needed = SYS_FLAG_WIFI_READY | SYS_FLAG_TIME_VALID;
+
+		sys_wdt_idle(llss_wdt);
 		uint32_t got = sys_flag_wait_all(needed, K_SECONDS(30));
+
+		sys_wdt_alive(llss_wdt);
 
 		if (got == 0) {
 			uint32_t cur = sys_flag_get();

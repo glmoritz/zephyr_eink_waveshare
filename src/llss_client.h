@@ -99,6 +99,17 @@ int llss_session_open(void);
 void llss_session_close(void);
 
 /**
+ * @brief Soft network reset for the server-instability self-heal path.
+ *
+ * Drops the cached server address, closes the persistent session, and fully
+ * reinitialises the DNS resolver (close + reinit with the same servers). A
+ * prolonged reconnect storm can wedge the resolver so every lookup returns
+ * "no results" even after the server is reachable again; this clears that.
+ * Safe to call any time after llss_client_init().
+ */
+void llss_client_net_reset(void);
+
+/**
  * @brief Register this device with the LLSS server (unauthenticated).
  *
  * Sends device hardware_id and display capabilities; returns device_id

@@ -31,6 +31,8 @@ target_sources(app PRIVATE
     src/llss_thread.c
     src/llss_storage.c
     src/llss_client.c
+    src/net_watchdog.c
+    src/sys_watchdog.c
     src/ntp_sync.c
 )
 
@@ -41,3 +43,6 @@ endif()
 
 # Temporary deterministic frame pattern self-test.
 target_sources_ifdef(CONFIG_LLSS_PATTERN_TEST app PRIVATE src/pattern_check.c)
+
+# Temporary net/heap resource leak telemetry.
+target_sources_ifdef(CONFIG_LLSS_NETMEM_DEBUG app PRIVATE src/netmem_debug.c)
