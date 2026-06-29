@@ -27,7 +27,18 @@ LOG_MODULE_REGISTER(press_feedback, LOG_LEVEL_INF);
 
 enum band { BAND_TOP = 0, BAND_BOT, BAND_NONE };
 
-/* Button → (band, slot). Bottom 8 = BTN_1..BTN_8. Top usable slots 0,1,6,7. */
+/* Button → (band, slot). Hardware contract (2026-06-29):
+ *   bottom strip = btn1..btn8 across slots 0..7 (BTN_1..BTN_8)
+ *   top strip    = btn9..btn16 across slots 0..7
+ *     slot 0 (btn9)  : no hardware
+ *     slot 1 (btn10) : LOCAL menu trigger — handled by device_ui
+ *     slot 2 (btn11) : local-only, app rendering space
+ *     slot 3 (btn12) : local-only, app rendering space
+ *     slot 4 (btn13) : HL_LEFT
+ *     slot 5 (btn14) : HL_RIGHT
+ *     slot 6 (btn15) : ENTER
+ *     slot 7 (btn16) : ESC
+ */
 struct slot_pos { enum band band; int slot; };
 static const struct slot_pos slot_table[UI_BTN_COUNT] = {
 	[UI_BTN_1]        = { BAND_BOT, 0 },
@@ -38,13 +49,16 @@ static const struct slot_pos slot_table[UI_BTN_COUNT] = {
 	[UI_BTN_6]        = { BAND_BOT, 5 },
 	[UI_BTN_7]        = { BAND_BOT, 6 },
 	[UI_BTN_8]        = { BAND_BOT, 7 },
-	[UI_BTN_HL_LEFT]  = { BAND_TOP, 0 },
-	[UI_BTN_ESC]      = { BAND_TOP, 1 },
+	[UI_BTN_HL_LEFT]  = { BAND_TOP, 4 },
+	[UI_BTN_HL_RIGHT] = { BAND_TOP, 5 },
 	[UI_BTN_ENTER]    = { BAND_TOP, 6 },
-	[UI_BTN_HL_RIGHT] = { BAND_TOP, 7 },
+	[UI_BTN_ESC]      = { BAND_TOP, 7 },
 };
 
-static const int top_usable_slots[] = { 0, 1, 6, 7 };
+/* Slots that can receive a press from the HLSS-mapped top buttons (the
+ * device-local menu trigger at slot 1 doesn't show LLSS press feedback —
+ * device_ui draws its own visual). */
+static const int top_usable_slots[] = { 4, 5, 6, 7 };
 
 static const lv_color32_t i1_palette[2] = {
 	{ .blue = 0x00, .green = 0x00, .red = 0x00, .alpha = 0xFF },
