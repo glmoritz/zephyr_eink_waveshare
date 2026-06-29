@@ -24,6 +24,7 @@ static const int32_t btn_keycode[UI_BTN_COUNT] = {
 	[UI_BTN_ESC]      = INPUT_KEY_ESC,
 	[UI_BTN_HL_LEFT]  = INPUT_KEY_LEFT,
 	[UI_BTN_HL_RIGHT] = INPUT_KEY_RIGHT,
+	[UI_BTN_MENU]     = INPUT_KEY_MENU,
 };
 
 /* Logical button → LLSS wire name.  Indexed by enum ui_btn. */

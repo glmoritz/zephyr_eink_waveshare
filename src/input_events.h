@@ -28,6 +28,10 @@ enum ui_btn {
 	UI_BTN_ESC,
 	UI_BTN_HL_LEFT,
 	UI_BTN_HL_RIGHT,
+	/* btn10 in the top-strip contract: device-local menu trigger. Never
+	 * forwarded to LLSS (ui_btn_llss_name returns NULL); device_ui owns
+	 * the press and toggles the local menu overlay. */
+	UI_BTN_MENU,
 	UI_BTN_COUNT,
 };
 

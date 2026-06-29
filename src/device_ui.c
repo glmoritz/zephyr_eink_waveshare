@@ -826,9 +826,12 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 		return true;
 	}
 
-	/* From the main (server) screen, only the trigger is intercepted. */
+	/* From the main (server) screen, only the device-menu trigger is
+	 * intercepted. btn10 (UI_BTN_MENU) is the dedicated trigger per the
+	 * btn9..btn16 contract; ENTER LONG_PRESS is now free to forward to
+	 * LLSS as a normal app event (HLSS uses it for "offer draw"). */
 	if (scr == SCR_MAIN) {
-		if (btn == UI_BTN_ENTER && evt == UI_EVT_LONG_PRESS) {
+		if (btn == UI_BTN_MENU && evt == UI_EVT_PRESS) {
 			atomic_set(&active_scr, SCR_LOG);
 			signal_render();
 			return true;
@@ -841,8 +844,9 @@ bool device_ui_handle_input(enum ui_btn btn, enum ui_evt evt)
 		return true;
 	}
 
-	/* ESC exits to the main (server) screen */
-	if (btn == UI_BTN_ESC) {
+	/* btn10 again returns to normal behaviour. ESC keeps the same role
+	 * for users who learnt the old "escape closes the menu" muscle. */
+	if (btn == UI_BTN_ESC || btn == UI_BTN_MENU) {
 		atomic_set(&active_scr, SCR_MAIN);
 		signal_render();
 		return true;
