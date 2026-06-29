@@ -35,6 +35,13 @@
  * and to gate higher-level features. */
 #define SYS_FLAG_LLSS_AUTHORIZED    BIT(3)
 
+/* The server is currently reachable: set after a successful poll/fetch/input
+ * exchange, cleared on a server-reachability failure (while Wi-Fi is up) or on
+ * Wi-Fi loss. Distinct from LLSS_AUTHORIZED (an authorization verdict that
+ * persists across transient outages) — this tracks live connectivity so the UI
+ * can distinguish "online" / "Wi-Fi lost" / "server unreachable". */
+#define SYS_FLAG_SERVER_ONLINE      BIT(4)
+
 extern struct k_event system_flags;
 
 /*

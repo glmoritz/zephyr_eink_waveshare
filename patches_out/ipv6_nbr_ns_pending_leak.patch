@@ -1,0 +1,17 @@
+--- a/subsys/net/ip/ipv6_nbr.c	2026-06-19 17:30:04.518002489 +0000
++++ b/subsys/net/ip/ipv6_nbr.c	2026-06-19 17:30:04.518130699 +0000
+@@ -2176,7 +2176,13 @@
+ 					pending, nbr);
+ 			}
+ 
+-			/* Let the system timeout and then send the NS again */
++			/* Let the system timeout and then send the NS again.
++			 * A packet is already pending for this neighbor, so we do
++			 * NOT send this NS; release the solicitation packet built
++			 * above or it leaks -- net_send_data() below (which hands
++			 * pkt to the TX path that unrefs it) is never reached.
++			 */
++			net_pkt_unref(pkt);
+ 			net_ipv6_nbr_unlock();
+ 			return 0;
+ 		}

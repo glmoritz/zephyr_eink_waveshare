@@ -1,0 +1,59 @@
+PATCH: zephyr_ethernet_mcast_null_guard — don't deref a header-less pkt in L2
+=============================================================================
+
+Written against: Zephyr 4.4.x  (verified present in v4.4.1 and main, 2026-06)
+Target platform: ESP32-S3 on Zephyr RTOS, Ethernet L2
+Application:     /workspace/projects/hello_eink  (LLSS e-ink client)
+
+SUMMARY
+-------
+ethernet_fill_header()'s multicast/broadcast destination helpers read
+NET_IPV4_HDR(pkt)->dst / NET_IPV6_HDR(pkt)->dst with no check that the packet
+has an IP header. net_pkt_ip_data() is `pkt->frags->data`, so a header-less pkt
+(frags==NULL, e.g. when net_pkt allocation fails under TX-pool exhaustion)
+causes a NULL-region load (observed EXCCAUSE 28 load-prohibited, VADDR 0x11) and
+halts the kernel. This is the failure that turned a TX-pool drain into a fatal
+crash.
+
+ROOT CAUSE / FIX
+----------------
+Guard the three helpers (ethernet_ipv4_dst_is_broadcast_or_mcast,
+ethernet_fill_in_dst_on_ipv4_mcast, ethernet_fill_in_dst_on_ipv6_mcast) with
+net_pkt_is_empty(pkt) (short-circuits on !buffer) so a header-less pkt is
+treated as not-bcast/mcast (falls through to the resolved L2 dst) instead of
+dereferencing NULL. Robustness fix: a packet must never be able to halt the
+kernel. Full writeup: NETBUF_LEAK_ADVENTURE.md.
+
+--- 8< --- diff --- 8< ---
+--- a/subsys/net/l2/ethernet/ethernet.c
++++ b/subsys/net/l2/ethernet/ethernet.c
+@@ -464,6 +464,13 @@
+ #if defined(CONFIG_NET_IPV4)
+ static inline bool ethernet_ipv4_dst_is_broadcast_or_mcast(struct net_pkt *pkt)
+ {
++	/* A header-less pkt (frags==NULL, e.g. alloc failed under pool
++	 * exhaustion) has no IP header to inspect; net_pkt_ip_data() would
++	 * deref NULL. Treat as not-bcast/mcast. */
++	if (net_pkt_is_empty(pkt)) {
++		return false;
++	}
++
+ 	if (net_ipv4_is_addr_bcast_raw(net_pkt_iface(pkt),
+ 				       NET_IPV4_HDR(pkt)->dst) ||
+ 	    net_ipv4_is_addr_mcast_raw(NET_IPV4_HDR(pkt)->dst)) {
+@@ -477,6 +484,7 @@
+ 					       struct net_eth_addr *dst)
+ {
+ 	if (net_pkt_family(pkt) == NET_AF_INET &&
++	    !net_pkt_is_empty(pkt) &&
+ 	    net_ipv4_is_addr_mcast_raw(NET_IPV4_HDR(pkt)->dst)) {
+ 		/* Multicast address */
+ 		net_eth_ipv4_mcast_to_mac_addr(
+@@ -532,6 +540,7 @@
+ 					       struct net_eth_addr *dst)
+ {
+ 	if (net_pkt_family(pkt) == NET_AF_INET6 &&
++	    !net_pkt_is_empty(pkt) &&
+ 	    net_ipv6_is_addr_mcast_raw(NET_IPV6_HDR(pkt)->dst)) {
+ 		memcpy(dst, (uint8_t *)multicast_eth_addr.addr,
+ 		       sizeof(struct net_eth_addr) - 4);

@@ -333,7 +333,8 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 		ui_server_status_show(ICON_WIFI,
 			"Conectando ao Wi-Fi",
 			(info && info[0]) ? info : "Entrando na rede salva.");
-		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
+		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING |
+			       SYS_FLAG_SERVER_ONLINE);
 		break;
 	case WIFI_PROV_CONNECTED:
 		LOG_INF("WiFi connected: %s", info);
@@ -355,7 +356,8 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 				"Conexao perdida",
 				"Tentando reconectar ao Wi-Fi.");
 		}
-		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING);
+		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_WIFI_PROVISIONING |
+			       SYS_FLAG_SERVER_ONLINE);
 		/* Tear down the held TLS session — the underlying TCP is dead.
 		 * The next iteration will block on SYS_FLAG_WIFI_READY at the
 		 * top of the loop until the link comes back. */
@@ -367,7 +369,7 @@ void llss_on_wifi(enum wifi_prov_state state, const char *info)
 		ui_server_status_show(ICON_WIFI_HOTSPOT,
 			"Configurar Wi-Fi",
 			(info && info[0]) ? info : "Conecte-se ao ponto de acesso do dispositivo para continuar.");
-		sys_flag_clear(SYS_FLAG_WIFI_READY);
+		sys_flag_clear(SYS_FLAG_WIFI_READY | SYS_FLAG_SERVER_ONLINE);
 		sys_flag_set(SYS_FLAG_WIFI_PROVISIONING);
 		break;
 	default:
@@ -460,6 +462,7 @@ static void wipe_local_credentials(void)
 static void note_server_ok(void)
 {
 	net_fail_streak = 0;
+	sys_flag_set(SYS_FLAG_SERVER_ONLINE);
 	net_watchdog_ok();
 }
 
@@ -482,6 +485,7 @@ static void note_server_failure(void)
 		return; /* Wi-Fi down — not a server problem; wifi_prov path owns it. */
 	}
 
+	sys_flag_clear(SYS_FLAG_SERVER_ONLINE);
 	net_fail_streak++;
 
 	if (net_fail_streak == 1) {
@@ -828,8 +832,10 @@ static enum app_state do_poll(void)
 		 * BOTH are failures — do NOT fall through and copy poll_after_ms out
 		 * of the unparsed (zeroed) state, which made poll_interval_ms 0 and
 		 * spun the loop at ~40 reconnects/s, starving net buffers and wedging
-		 * DNS. Keep the last good interval and back off. (do_request already
-		 * closed the session on http_status >= 400.) */
+		 * DNS. Keep the last good interval and back off. (do_request now
+		 * KEEPS the persistent session through HTTP errors and only closes
+		 * on a real transport failure, so the next poll reuses the same
+		 * connection instead of churning a new one each 502.) */
 		LOG_ERR("Poll error %d", rc);
 		note_server_failure();
 		return STATE_POLLING;

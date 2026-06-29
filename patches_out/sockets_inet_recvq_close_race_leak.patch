@@ -1,0 +1,23 @@
+--- a/subsys/net/lib/sockets/sockets_inet.c	2026-06-20 13:19:28.007176259 +0000
++++ b/subsys/net/lib/sockets/sockets_inet.c	2026-06-20 13:19:28.007406730 +0000
+@@ -280,6 +280,20 @@
+ 
+ 	net_pkt_set_rx_stats_tick(pkt, k_cycle_get_32());
+ 
++	/* Close-race guard: net_context_packet_received() validates recv_cb
++	 * under context->lock then invokes this callback AFTER unlocking.
++	 * zsock_close() NULLs recv_cb (net_context_recv(NULL)) BEFORE
++	 * zsock_flush_queue() drains recv_q. So recv_cb==NULL here means a
++	 * close has raced in and the flush has already run (or will not
++	 * re-run): enqueueing now strands this pkt in recv_q forever
++	 * (nothing re-drains recv_q; tcp_conn_release() drains only
++	 * conn->recv_data). Drop it -- the socket is closed and the app will
++	 * never read it, same outcome as the flush. */
++	if (ctx->recv_cb == NULL) {
++		net_pkt_unref(pkt);
++		goto unlock;
++	}
++
+ 	k_fifo_put(&ctx->recv_q, pkt);
+ 
+ unlock:

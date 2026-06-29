@@ -15,6 +15,7 @@
  */
 
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,9 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/clock.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
+#include <zephyr/net/dns_resolve.h>
 
 #include <lvgl.h>
 
@@ -140,7 +144,7 @@ static lv_obj_t *log_content;
 /* Network screen */
 static lv_obj_t *net_scr;
 static lv_obj_t *net_ssid_lbl;
-static lv_obj_t *net_ip_lbl;
+static lv_obj_t *net_details_lbl;
 
 /* Clock screen */
 static lv_obj_t *clk_scr;
@@ -171,6 +175,8 @@ static lv_obj_t *sav_scr;
 static lv_obj_t *sav_date_lbl;
 static lv_obj_t *sav_time_lbl;
 static lv_obj_t *sav_temp_lbl;
+static lv_obj_t *sav_net_icon;    /* connectivity glyph (hidden when online)       */
+static lv_obj_t *sav_net_lbl;     /* connectivity text  (hidden when online)       */
 static lv_obj_t *sav_banner;      /* solid-black notification bar (hidden in idle) */
 static lv_obj_t *sav_bell_lbl;    /* bell icon inside the banner                   */
 static lv_obj_t *sav_banner_lbl;  /* white knockout text inside the banner         */
@@ -326,13 +332,140 @@ static void render_log_locked(void)
 	lv_screen_load(log_scr);
 }
 
+/* Append printf-style text into buf at *pos, never overflowing len. */
+static void ni_add(char *buf, size_t len, size_t *pos, const char *fmt, ...)
+{
+	if (*pos + 1 >= len) {
+		return;
+	}
+	va_list ap;
+
+	va_start(ap, fmt);
+	int n = vsnprintf(buf + *pos, len - *pos, fmt, ap);
+
+	va_end(ap);
+	if (n > 0) {
+		*pos += MIN((size_t)n, len - *pos - 1);
+	}
+}
+
+struct ni_ctx {
+	char   *buf;
+	size_t  len;
+	size_t *pos;
+};
+
+static void ni_v4_cb(struct net_if *iface, struct net_if_addr *a, void *ud)
+{
+	struct ni_ctx *c = ud;
+	char ip[NET_IPV4_ADDR_LEN];
+	char nm[NET_IPV4_ADDR_LEN];
+
+	if (!net_addr_ntop(AF_INET, &a->address.in_addr, ip, sizeof(ip))) {
+		return;
+	}
+
+	struct net_in_addr mask =
+		net_if_ipv4_get_netmask_by_addr(iface, &a->address.in_addr);
+
+	if (net_addr_ntop(AF_INET, &mask, nm, sizeof(nm)) && nm[0]) {
+		ni_add(c->buf, c->len, c->pos, "IPv4: %s / %s\n", ip, nm);
+	} else {
+		ni_add(c->buf, c->len, c->pos, "IPv4: %s\n", ip);
+	}
+}
+
+static void ni_v6_cb(struct net_if *iface, struct net_if_addr *a, void *ud)
+{
+	ARG_UNUSED(iface);
+	struct ni_ctx *c = ud;
+	char ip[NET_IPV6_ADDR_LEN];
+
+	if (net_addr_ntop(AF_INET6, &a->address.in6_addr, ip, sizeof(ip))) {
+		ni_add(c->buf, c->len, c->pos, "IPv6: %s\n", ip);
+	}
+}
+
+/* Collect the interface detail block (like `net iface` + DNS) into buf. */
+static void net_collect_details(char *buf, size_t len)
+{
+	size_t pos = 0;
+
+	buf[0] = '\0';
+
+	struct net_if *iface = net_if_get_default();
+
+	if (!iface) {
+		snprintf(buf, len, "Interface indisponivel");
+		return;
+	}
+
+	struct ni_ctx c = { buf, len, &pos };
+
+	ni_add(buf, len, &pos, "Estado: %s\n",
+	       net_if_is_up(iface) ? "ATIVA" : "INATIVA");
+
+	if (IS_ENABLED(CONFIG_NET_IPV4)) {
+		net_if_ipv4_addr_foreach(iface, ni_v4_cb, &c);
+
+		struct net_in_addr gw = net_if_ipv4_get_gw(iface);
+		char gws[NET_IPV4_ADDR_LEN];
+
+		if (!net_ipv4_is_addr_unspecified(&gw) &&
+		    net_addr_ntop(AF_INET, &gw, gws, sizeof(gws))) {
+			ni_add(buf, len, &pos, "Gateway: %s\n", gws);
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_NET_IPV6)) {
+		net_if_ipv6_addr_foreach(iface, ni_v6_cb, &c);
+	}
+
+	struct net_linkaddr *ll = net_if_get_link_addr(iface);
+
+	if (ll && ll->len >= 6) {
+		ni_add(buf, len, &pos, "MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+		       ll->addr[0], ll->addr[1], ll->addr[2],
+		       ll->addr[3], ll->addr[4], ll->addr[5]);
+	}
+
+	ni_add(buf, len, &pos, "MTU: %u\n", net_if_get_mtu(iface));
+
+	struct dns_resolve_context *dns = dns_resolve_get_default();
+
+	if (dns) {
+		for (int i = 0; i < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
+			struct sockaddr *sa = &dns->servers[i].dns_server;
+			char ds[NET_IPV6_ADDR_LEN];
+
+			if (sa->sa_family == AF_INET &&
+			    net_addr_ntop(AF_INET, &net_sin(sa)->sin_addr,
+					  ds, sizeof(ds))) {
+				ni_add(buf, len, &pos, "DNS: %s\n", ds);
+			} else if (sa->sa_family == AF_INET6 &&
+				   net_addr_ntop(AF_INET6, &net_sin6(sa)->sin6_addr,
+						 ds, sizeof(ds))) {
+				ni_add(buf, len, &pos, "DNS: %s\n", ds);
+			}
+		}
+	}
+
+	/* Trim trailing newline. */
+	if (pos > 0 && buf[pos - 1] == '\n') {
+		buf[pos - 1] = '\0';
+	}
+}
+
 static void render_net_locked(void)
 {
 	const char *ssid = wifi_prov_get_ssid();
-	const char *ip   = wifi_prov_get_ip();
+	static char details[512];
 
 	lv_label_set_text(net_ssid_lbl, (ssid && ssid[0]) ? ssid : "Sem conexao");
-	lv_label_set_text(net_ip_lbl,   (ip && ip[0]) ? ip : "-");
+
+	net_collect_details(details, sizeof(details));
+	lv_label_set_text(net_details_lbl, details);
+
 	lv_screen_load(net_scr);
 }
 
@@ -578,11 +711,13 @@ static void render_saver_locked(void)
 
 	if (shtc3_get_latest(&sd) && sd.has_sample &&
 	    (sd.status == SHTC3_DATA_VALID || sd.status == SHTC3_DATA_SIMULATED)) {
-		char tbuf[24];
+		char tbuf[32];
 
-		snprintk(tbuf, sizeof(tbuf), "%d.%01d C",
+		snprintk(tbuf, sizeof(tbuf), "%d.%01d C    %d.%01d %%",
 			 sd.temperature_centi_c / 100,
-			 abs((sd.temperature_centi_c / 10) % 10));
+			 abs((sd.temperature_centi_c / 10) % 10),
+			 sd.humidity_centi_pct / 100,
+			 abs((sd.humidity_centi_pct / 10) % 10));
 		lv_label_set_text(sav_temp_lbl, tbuf);
 	} else {
 		lv_label_set_text(sav_temp_lbl, "");
@@ -605,6 +740,33 @@ static void render_saver_locked(void)
 		lv_obj_remove_flag(sav_banner, LV_OBJ_FLAG_HIDDEN);
 	} else {
 		lv_obj_add_flag(sav_banner, LV_OBJ_FLAG_HIDDEN);
+	}
+
+	/* Connectivity status — distinguish Wi-Fi loss from server loss. Shown in
+	 * the bottom band only when offline AND the pending-frames banner isn't
+	 * already there (an outage means no new frames are arriving anyway). */
+	uint32_t net_flags = sys_flag_get();
+	const char *net_msg = NULL;
+
+	/* ICON_WIFI is the only connectivity glyph in the 40px font subset
+	 * (ICON_WARNING/ICON_WIFI_HOTSPOT aren't), so the glyph is constant and the
+	 * text distinguishes the three states. */
+	if (net_flags & SYS_FLAG_WIFI_PROVISIONING) {
+		net_msg = "Configure o Wi-Fi";
+	} else if (!(net_flags & SYS_FLAG_WIFI_READY)) {
+		net_msg = "Sem conexao Wi-Fi";
+	} else if (!(net_flags & SYS_FLAG_SERVER_ONLINE)) {
+		net_msg = "Servidor indisponivel";
+	}
+
+	if (net_msg != NULL && pending <= 0) {
+		lv_label_set_text(sav_net_icon, ICON_WIFI);
+		lv_label_set_text(sav_net_lbl, net_msg);
+		lv_obj_remove_flag(sav_net_icon, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_remove_flag(sav_net_lbl, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(sav_net_icon, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_flag(sav_net_lbl, LV_OBJ_FLAG_HIDDEN);
 	}
 
 	lv_screen_load(sav_scr);
@@ -981,8 +1143,25 @@ static void build_net_scr(void)
 	build_header(net_scr, "Rede");
 	build_softkeys(net_scr, keys);
 
-	build_field(net_scr, "REDE WI-FI", CONTENT_Y + 40, &net_ssid_lbl);
-	build_field(net_scr, "ENDERECO IP",    CONTENT_Y + 130, &net_ip_lbl);
+	build_field(net_scr, "REDE WI-FI", CONTENT_Y + 30, &net_ssid_lbl);
+
+	/* Interface detail block — multi-line, denser body font: state,
+	 * IPv4 (+netmask), gateway, IPv6, MAC, MTU, DNS — like `net iface`. */
+	lv_obj_t *cap = lv_label_create(net_scr);
+
+	lv_obj_set_style_text_color(cap, c_gray(0x66), 0);
+	lv_obj_set_style_text_font(cap, &geneva_14, 0);
+	lv_label_set_text(cap, "DETALHES DA INTERFACE");
+	lv_obj_set_pos(cap, 40, CONTENT_Y + 100);
+
+	net_details_lbl = lv_label_create(net_scr);
+	lv_obj_set_style_text_color(net_details_lbl, c_ink(), 0);
+	lv_obj_set_style_text_font(net_details_lbl, &geneva_14, 0);
+	lv_obj_set_style_text_line_space(net_details_lbl, 4, 0);
+	lv_obj_set_width(net_details_lbl, SCR_W - 80);
+	lv_label_set_long_mode(net_details_lbl, LV_LABEL_LONG_WRAP);
+	lv_label_set_text(net_details_lbl, "-");
+	lv_obj_set_pos(net_details_lbl, 40, CONTENT_Y + 124);
 }
 
 static void build_clk_scr(void)
@@ -1144,6 +1323,27 @@ static void build_saver_scr(void)
 	lv_obj_set_style_text_align(sav_temp_lbl, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(sav_temp_lbl, "");
 	lv_obj_align(sav_temp_lbl, LV_ALIGN_CENTER, 0, 130);
+
+	/* Connectivity status — glyph + text stacked in the bottom space, shown
+	 * only when offline (Wi-Fi or server). Hidden when online or when the
+	 * pending-frames banner owns the bottom band. */
+	sav_net_icon = lv_label_create(sav_scr);
+	lv_obj_set_width(sav_net_icon, SCR_W);
+	lv_obj_set_style_text_color(sav_net_icon, c_gray(0x44), 0);
+	lv_obj_set_style_text_font(sav_net_icon, &material_design_40, 0);
+	lv_obj_set_style_text_align(sav_net_icon, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_text(sav_net_icon, "");
+	lv_obj_align(sav_net_icon, LV_ALIGN_BOTTOM_MID, 0, -44);
+	lv_obj_add_flag(sav_net_icon, LV_OBJ_FLAG_HIDDEN);
+
+	sav_net_lbl = lv_label_create(sav_scr);
+	lv_obj_set_width(sav_net_lbl, SCR_W);
+	lv_obj_set_style_text_color(sav_net_lbl, c_gray(0x44), 0);
+	lv_obj_set_style_text_font(sav_net_lbl, &chicago_18, 0);
+	lv_obj_set_style_text_align(sav_net_lbl, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_text(sav_net_lbl, "");
+	lv_obj_align(sav_net_lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
+	lv_obj_add_flag(sav_net_lbl, LV_OBJ_FLAG_HIDDEN);
 
 	/* Notification band — hidden in idle mode. */
 	sav_banner = panel(sav_scr, SCR_W, 76);

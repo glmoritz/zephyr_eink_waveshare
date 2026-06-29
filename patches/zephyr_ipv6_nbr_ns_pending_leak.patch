@@ -1,0 +1,43 @@
+PATCH: zephyr_ipv6_nbr_ns_pending_leak — free abandoned NS solicitation
+=======================================================================
+
+Written against: Zephyr 4.4.x  (verified present in v4.4.1 and main, 2026-06)
+Target platform: ESP32-S3 on Zephyr RTOS, IPv6
+Application:     /workspace/projects/hello_eink  (LLSS e-ink client)
+
+SUMMARY
+-------
+net_ipv6_send_ns() allocates a Neighbor Solicitation net_pkt up front. When the
+target neighbor already has a solicitation pending, the function appends the
+caller's data packet to the pending queue and returns early ("Let the system
+timeout and then send the NS again") WITHOUT freeing the NS packet it just
+built. The only success-path unref is in net_send_data() -> L2 send, which is
+past the early return and never reached. Every packet sent to an INCOMPLETE
+neighbor that already has a pending solicitation leaks one TX net_pkt.
+
+ROOT CAUSE / FIX
+----------------
+Add net_pkt_unref(pkt) before the already-pending early return. We deliberately
+do not send this NS, so the built packet must be released.
+
+Found on hardware (TX-pool drain over hours of server-reconnect churn); zero NS
+leaked after the fix. Full writeup: NETBUF_LEAK_ADVENTURE.md.
+
+--- 8< --- diff --- 8< ---
+--- a/subsys/net/ip/ipv6_nbr.c	2026-06-19 17:30:04.518002489 +0000
++++ b/subsys/net/ip/ipv6_nbr.c	2026-06-19 17:30:04.518130699 +0000
+@@ -2176,7 +2176,13 @@
+ 					pending, nbr);
+ 			}
+ 
+-			/* Let the system timeout and then send the NS again */
++			/* Let the system timeout and then send the NS again.
++			 * A packet is already pending for this neighbor, so we do
++			 * NOT send this NS; release the solicitation packet built
++			 * above or it leaks -- net_send_data() below (which hands
++			 * pkt to the TX path that unrefs it) is never reached.
++			 */
++			net_pkt_unref(pkt);
+ 			net_ipv6_nbr_unlock();
+ 			return 0;
+ 		}

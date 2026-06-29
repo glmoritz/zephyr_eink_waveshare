@@ -168,6 +168,21 @@ config LLSS_NETMEM_DEBUG_INTERVAL_MS
 	default 30000
 	depends on LLSS_NETMEM_DEBUG
 
+config LLSS_PKT_LIFETIME
+	bool "Trace alloc/free lifetime of the leaking net_pkt types (temporary debug)"
+	default n
+	depends on NET_DEBUG_NET_PKT_ALLOC
+	help
+	  Emit a greppable "PKTL" printk line for the two net_pkt populations that
+	  leak on the device: IPv6 Neighbor Solicitations (net_ipv6_send_ns, TX) and
+	  small driver RX segments (eth_esp32_rx, <128 B — where the TLS close_notify
+	  lives). Prints alloc (with the NS send-ok/drop path) and the terminal free
+	  (with both the alloc and freeing caller). A leaked packet shows an alloc
+	  with no matching free; healthy ones show the normal freeing site, so the
+	  diff reveals which unref the leaked packet skipped. Low volume by design
+	  (NS are rare; the RX <128 B filter excludes bulk frame data). Requires
+	  CONFIG_NET_DEBUG_NET_PKT_ALLOC. Debug aid; keep disabled for normal use.
+
 config LLSS_WATCHDOG
 	bool "Connectivity watchdog (server-reachability self-heal escalation)"
 	default y

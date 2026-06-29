@@ -284,39 +284,19 @@ static int ensure_dns_context_active(void)
 }
 
 /* Soft network reset for the server-instability self-heal path: drop the cached
- * server address and fully reinitialise the DNS resolver. A prolonged reconnect
- * storm can wedge the resolver (concurrent-query slots stuck) so that even after
- * the server returns every lookup yields "no results"; closing and re-initing
- * the context with the same servers clears that. */
+ * server address and close the persistent session so the next attempt starts
+ * clean.
+ *
+ * NOTE (2026-06-18): this deliberately NO LONGER closes/reinitialises the DNS
+ * resolver. The earlier "DNS wedge" was a symptom of the reconnect *storm*
+ * (buffer exhaustion), which is fixed at the source; the resolver recovers on
+ * its own. Repeatedly closing/reiniting a mature subsystem mid-operation just
+ * pokes it (and was a suspect for an orphaned RX packet). A genuinely stuck
+ * resolver is now left to the watchdog reboot rather than proactive poking. */
 void llss_client_net_reset(void)
 {
 	invalidate_cached_server_addr();
 	llss_session_close();
-
-	struct dns_resolve_context *ctx = dns_resolve_get_default();
-
-	if (!ctx) {
-		return;
-	}
-
-	char server_buf[CONFIG_DNS_RESOLVER_MAX_SERVERS][NET_IPV6_ADDR_LEN];
-	const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1];
-	int32_t count = collect_dns_servers(ctx, server_buf, servers);
-
-	(void)dns_resolve_close(ctx);
-
-	if (count > 0) {
-		int32_t ret = dns_resolve_init(ctx, servers, NULL);
-
-		if (ret < 0) {
-			LOG_ERR("DNS reset: dns_resolve_init failed: %d", ret);
-		} else {
-			LOG_WRN("DNS resolver reset (%d server%s)",
-				count, count == 1 ? "" : "s");
-		}
-	} else {
-		LOG_WRN("DNS reset: no servers to reinit (awaiting DHCP)");
-	}
 }
 
 static void invalidate_cached_server_addr(void)
@@ -627,6 +607,40 @@ static int http_response_cb(struct http_response *rsp,
 	return 0;
 }
 
+/* Close a TLS socket after draining any pending inbound data.
+ *
+ * The server sends a TLS close_notify alert after an HTTP error response (and at
+ * connection end). If we zsock_close() with that record still sitting unread in
+ * the socket's RX queue, the stack leaks the net_pkt holding it — confirmed by
+ * hexdump: one leaked eth_esp32_rx RX segment carrying a `15 03 03` TLS alert
+ * from the server per HTTP 502. Reading it lets the TLS layer process the alert
+ * and free the segment, which is also the correct way to close a TLS connection
+ * (consume the peer's close_notify rather than slamming the socket shut).
+ *
+ * Bounded (~80 ms worst case) so a chatty or hung peer can't stall us. */
+static void drain_and_close(int sock)
+{
+	uint8_t scratch[128];
+
+	for (int i = 0; i < 8; i++) {
+		ssize_t r = zsock_recv(sock, scratch, sizeof(scratch),
+				       ZSOCK_MSG_DONTWAIT);
+
+		if (r == 0) {
+			break; /* orderly close_notify / EOF consumed — done */
+		}
+		if (r < 0) {
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				break; /* real error — nothing more to drain */
+			}
+			k_msleep(10); /* nothing queued yet — let it arrive */
+		}
+		/* r > 0: drained some bytes; loop to read the rest incl. the alert */
+	}
+
+	zsock_close(sock);
+}
+
 /* =========================================================================
  * Generic request helper
  * ========================================================================= */
@@ -735,27 +749,25 @@ static int do_request(enum http_method method, const char *path,
 	}
 
 	if (owned_sock) {
-		int64_t close_start_ms = k_uptime_get();
-
-		zsock_close(sock);
-		ARG_UNUSED(close_start_ms);
+		drain_and_close(sock);
 	} else if (rc < 0) {
-		/* Shared session socket is broken — invalidate it so the next
-		 * call in this job will fall back to opening a fresh one. */
+		/* Shared session socket has a real TRANSPORT failure (TLS broken,
+		 * connection reset, timeout) — invalidate it so the next call
+		 * opens a fresh connection.
+		 *
+		 * We deliberately DO NOT close on an HTTP error status (>=400,
+		 * e.g. a reverse-proxy 502).  Per HTTP keep-alive semantics the
+		 * connection lifetime is governed by Connection:close, NOT the
+		 * response code: a 502 means the proxy's *upstream* is down, while
+		 * our TLS connection to the proxy is still perfectly healthy.
+		 * Closing it on every 502 churned the connection on each poll and
+		 * stranded un-ACKed tcp_out segments → slow TX-pool drain → crash.
+		 * Keep the persistent session through HTTP errors; the caller backs
+		 * off and retries over it.  If the peer genuinely did send a
+		 * close_notify with the error, the NEXT request on this socket
+		 * returns rc<0 and is torn down cleanly right here. */
 		LOG_WRN("LLSS session socket error (rc=%d) — invalidating", rc);
-		zsock_close(session_sock);
-		session_sock = -1;
-	} else if (ctx.http_status >= 400) {
-		/* Server returned an HTTP error status — it typically sends a
-		 * TLS close_notify on errors.  Invalidate now so the next
-		 * call opens a fresh connection rather than hitting a dead
-		 * socket.  NOTE: gate on ctx.http_status (the parsed HTTP code),
-		 * NOT rc — http_client_req() returns a BYTE COUNT, so a healthy
-		 * ~420-byte button response was being misread as "HTTP 420" and
-		 * needlessly tore down the persistent session every press. */
-		LOG_DBG("LLSS session: HTTP %d — closing (server likely sent close_notify)",
-			ctx.http_status);
-		zsock_close(session_sock);
+		drain_and_close(session_sock);
 		session_sock = -1;
 	}
 
@@ -800,7 +812,7 @@ void llss_session_close(void)
 	}
 
 	LOG_DBG("LLSS session close: sock=%d", session_sock);
-	zsock_close(session_sock);
+	drain_and_close(session_sock);
 	session_sock = -1;
 }
 
