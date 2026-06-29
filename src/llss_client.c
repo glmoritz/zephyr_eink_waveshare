@@ -885,13 +885,21 @@ struct state_resp {
 	char frame_id[64];
 	char active_instance_id[64];
 	int32_t poll_after_ms;
+	char top_strip_id[LLSS_STRIP_ID_MAX];
+	char bottom_strip_id[LLSS_STRIP_ID_MAX];
+	int32_t top_enabled_mask;
+	int32_t bottom_enabled_mask;
 };
 
 static const struct json_obj_descr state_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct state_resp, action,             JSON_TOK_STRING_BUF),
-	JSON_OBJ_DESCR_PRIM(struct state_resp, frame_id,           JSON_TOK_STRING_BUF),
-	JSON_OBJ_DESCR_PRIM(struct state_resp, active_instance_id, JSON_TOK_STRING_BUF),
-	JSON_OBJ_DESCR_PRIM(struct state_resp, poll_after_ms,      JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, action,              JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, frame_id,            JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, active_instance_id,  JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, poll_after_ms,       JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, top_strip_id,        JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, bottom_strip_id,     JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, top_enabled_mask,    JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, bottom_enabled_mask, JSON_TOK_NUMBER),
 };
 
 /* --- InputProcessResponse --- */
@@ -900,13 +908,21 @@ struct input_resp {
 	char frame_id[64];
 	int32_t poll_after_ms;
 	char message[128];
+	char top_strip_id[LLSS_STRIP_ID_MAX];
+	char bottom_strip_id[LLSS_STRIP_ID_MAX];
+	int32_t top_enabled_mask;
+	int32_t bottom_enabled_mask;
 };
 
 static const struct json_obj_descr input_resp_descr[] = {
-	JSON_OBJ_DESCR_PRIM(struct input_resp, status,        JSON_TOK_STRING_BUF),
-	JSON_OBJ_DESCR_PRIM(struct input_resp, frame_id,      JSON_TOK_STRING_BUF),
-	JSON_OBJ_DESCR_PRIM(struct input_resp, poll_after_ms, JSON_TOK_NUMBER),
-	JSON_OBJ_DESCR_PRIM(struct input_resp, message,       JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, status,              JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, frame_id,            JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, poll_after_ms,       JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, message,             JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, top_strip_id,        JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, bottom_strip_id,     JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, top_enabled_mask,    JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, bottom_enabled_mask, JSON_TOK_NUMBER),
 };
 
 /* =========================================================================
@@ -1206,7 +1222,11 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 	}
 
 	struct state_resp resp = {
-		.poll_after_ms = CONFIG_LLSS_POLL_INTERVAL_MS,
+		.poll_after_ms       = CONFIG_LLSS_POLL_INTERVAL_MS,
+		/* Sentinel: parsers only overwrite on hit, so -1 stays for
+		 * fields the server omitted (response_model_exclude_none). */
+		.top_enabled_mask    = -1,
+		.bottom_enabled_mask = -1,
 	};
 
 	int32_t rc = json_obj_parse((char *)json_recv_buf,
@@ -1236,6 +1256,15 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 
 	strncpy(state_out->frame_id, resp.frame_id,
 		sizeof(state_out->frame_id) - 1);
+	strncpy(state_out->top_strip_id, resp.top_strip_id,
+		sizeof(state_out->top_strip_id) - 1);
+	state_out->top_strip_id[sizeof(state_out->top_strip_id) - 1] = '\0';
+	strncpy(state_out->bottom_strip_id, resp.bottom_strip_id,
+		sizeof(state_out->bottom_strip_id) - 1);
+	state_out->bottom_strip_id[sizeof(state_out->bottom_strip_id) - 1] = '\0';
+
+	state_out->top_enabled_mask    = resp.top_enabled_mask;
+	state_out->bottom_enabled_mask = resp.bottom_enabled_mask;
 
 	state_out->poll_after_ms = CLAMP(resp.poll_after_ms,
 					 CONFIG_LLSS_MIN_POLL_MS,
@@ -1297,16 +1326,16 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 /* ----- Fetch pressed strip (protocol extension) -------------------------- */
 
 int llss_fetch_pressed_strip(const char *access_token, const char *device_id,
-			     const char *frame_id, enum llss_strip strip,
+			     const char *strip_id,
 			     uint8_t *dst, size_t dst_size, size_t *len_out)
 {
 	char path[LLSS_MAX_URL_LEN];
 	char auth_hdr[LLSS_TOKEN_MAX + 32];
-	const char *which = (strip == LLSS_STRIP_TOP_PRESSED)
-				    ? "top_pressed" : "bottom_pressed";
 
-	snprintf(path, sizeof(path), "/devices/%s/frames/%s?strip=%s",
-		 device_id, frame_id, which);
+	/* Content-addressable: strips are immutable per id; ?raw=true for the
+	 * panel-native packed format consistent with the full-frame fetch. */
+	snprintf(path, sizeof(path), "/devices/%s/strips/%s?raw=true",
+		 device_id, strip_id);
 	make_bearer_header(access_token, auth_hdr, sizeof(auth_hdr));
 
 	size_t body_len = 0;
@@ -1391,7 +1420,9 @@ int llss_send_input(const char *access_token, const char *device_id,
 	}
 
 	struct input_resp resp = {
-		.poll_after_ms = CONFIG_LLSS_POLL_INTERVAL_MS,
+		.poll_after_ms       = CONFIG_LLSS_POLL_INTERVAL_MS,
+		.top_enabled_mask    = -1,
+		.bottom_enabled_mask = -1,
 	};
 
 	int32_t rc = json_obj_parse((char *)json_recv_buf,
@@ -1418,6 +1449,14 @@ int llss_send_input(const char *access_token, const char *device_id,
 
 	strncpy(resp_out->frame_id, resp.frame_id,
 		sizeof(resp_out->frame_id) - 1);
+	strncpy(resp_out->top_strip_id, resp.top_strip_id,
+		sizeof(resp_out->top_strip_id) - 1);
+	resp_out->top_strip_id[sizeof(resp_out->top_strip_id) - 1] = '\0';
+	strncpy(resp_out->bottom_strip_id, resp.bottom_strip_id,
+		sizeof(resp_out->bottom_strip_id) - 1);
+	resp_out->bottom_strip_id[sizeof(resp_out->bottom_strip_id) - 1] = '\0';
+	resp_out->top_enabled_mask    = resp.top_enabled_mask;
+	resp_out->bottom_enabled_mask = resp.bottom_enabled_mask;
 	resp_out->poll_after_ms = CLAMP(resp.poll_after_ms,
 					CONFIG_LLSS_MIN_POLL_MS,
 					CONFIG_LLSS_MAX_POLL_MS);

@@ -48,20 +48,24 @@ config LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
 
 config LLSS_TOP_STRIP_HEIGHT
 	int "Top button-label strip height (px) reported to server"
-	default 64
+	default 50
 	help
 	  Pixels reserved at the top of the display for the button-label strip.
-	  Declared to LLSS at registration so the server renders the top strip
-	  into that band. Should match the device UI top band (HDR_H).
+	  Declared to LLSS at registration so HLSS renders the top strip into
+	  that band. Must match the HLSS renderer (HEADER_H in pil_engine.py).
+	  HLSS currently hardcodes 50; mismatch causes the device-side press
+	  feedback (and any future strip blit) to overflow into app content.
 	  0 = no top strip.
 
 config LLSS_BOTTOM_STRIP_HEIGHT
 	int "Bottom button-label strip height (px) reported to server"
-	default 72
+	default 50
 	help
 	  Pixels reserved at the bottom of the display for the button-label strip.
-	  Declared to LLSS at registration so the server renders the bottom strip
-	  into that band. Should match the device UI bottom band (FTR_H).
+	  Declared to LLSS at registration so HLSS renders the bottom strip into
+	  that band. Must match the HLSS renderer (FOOTER_H in pil_engine.py).
+	  HLSS currently hardcodes 50; mismatch causes the device-side press
+	  feedback (and any future strip blit) to overflow into app content.
 	  0 = no bottom strip.
 
 config LLSS_TLS_TAG

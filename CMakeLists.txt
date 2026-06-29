@@ -31,6 +31,8 @@ target_sources(app PRIVATE
     src/llss_thread.c
     src/llss_storage.c
     src/llss_client.c
+    src/llss_strip_cache.c
+    src/press_feedback.c
     src/net_watchdog.c
     src/sys_watchdog.c
     src/ntp_sync.c

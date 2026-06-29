@@ -35,11 +35,8 @@ enum llss_input_result {
 	LLSS_INPUT_ERROR,
 };
 
-/* Which pressed-state button strip to fetch (protocol extension). */
-enum llss_strip {
-	LLSS_STRIP_TOP_PRESSED = 0,
-	LLSS_STRIP_BOTTOM_PRESSED,
-};
+/* Content-addressable strip id length (opaque token, ≤32 chars + NUL). */
+#define LLSS_STRIP_ID_MAX 33
 
 /* =========================================================================
  * Data structures
@@ -49,12 +46,24 @@ struct llss_device_state {
 	enum llss_action action;
 	char             frame_id[64];
 	int32_t          poll_after_ms;
+	/* Pressed-state strip ids for the current frame (protocol extension).
+	 * Empty string when the active instance did not upload one. */
+	char             top_strip_id[LLSS_STRIP_ID_MAX];
+	char             bottom_strip_id[LLSS_STRIP_ID_MAX];
+	/* 8-bit per-band enabled-slot bitmask. -1 = server did not advertise
+	 * one (device falls back to the local all-white-slot heuristic). */
+	int32_t          top_enabled_mask;
+	int32_t          bottom_enabled_mask;
 };
 
 struct llss_input_response {
 	enum llss_input_result status;
 	char                   frame_id[64];
 	int32_t                poll_after_ms;
+	char                   top_strip_id[LLSS_STRIP_ID_MAX];
+	char                   bottom_strip_id[LLSS_STRIP_ID_MAX];
+	int32_t                top_enabled_mask;    /* -1 = unspecified */
+	int32_t                bottom_enabled_mask; /* -1 = unspecified */
 };
 
 /* =========================================================================
@@ -199,18 +208,21 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
 		     uint8_t *dst, size_t dst_size, size_t *len_out);
 
 /**
- * @brief Fetch a pressed-state button strip for a frame (protocol extension).
+ * @brief Fetch a pressed-state button strip by content id (protocol extension).
  *
- * Requests `GET /devices/{id}/frames/{frame_id}?strip=top_pressed|bottom_pressed`.
- * The strip is an optional, server-rendered convenience for local press
- * feedback; a server (or frame) that has no such strip returns 404, which is
- * reported as -ENOENT (not an error — the caller simply skips press feedback).
+ * Requests `GET /devices/{id}/strips/{strip_id}` where @p strip_id is the
+ * opaque content-hash token advertised by the server in
+ * `llss_device_state.top_strip_id` / `bottom_strip_id` (or the equivalent
+ * fields in `llss_input_response`). Strips are immutable for a given id; the
+ * caller is expected to cache by id and skip the fetch on a hit.
+ *
+ * A server (or instance) with no pressed strip for that id returns 404,
+ * reported as -ENOENT — the caller simply skips press feedback.
  *
  * @param access_token  Valid Bearer access token.
  * @param device_id     Registered device ID.
- * @param frame_id      Frame ID the strip belongs to.
- * @param strip         Which strip to fetch.
- * @param dst           Destination buffer for the PNG body.
+ * @param strip_id      Opaque content-hash id (≤32 chars).
+ * @param dst           Destination buffer for the body.
  * @param dst_size      Capacity of @p dst in bytes.
  * @param len_out       Set to bytes written on success.
  * @return 0 on success, -ENOENT if no pressed strip is available (404),
@@ -218,7 +230,7 @@ int llss_fetch_frame(const char *access_token, const char *device_id,
  *         positive HTTP status on other errors.
  */
 int llss_fetch_pressed_strip(const char *access_token, const char *device_id,
-			     const char *frame_id, enum llss_strip strip,
+			     const char *strip_id,
 			     uint8_t *dst, size_t dst_size, size_t *len_out);
 
 /**

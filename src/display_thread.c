@@ -32,6 +32,7 @@
 #include "device_ui.h"
 #include "display_thread.h"
 #include "material_icons.h"
+#include "press_feedback.h"
 #include "section_attrs.h"
 #include "sys_watchdog.h"
 
@@ -337,6 +338,14 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 	server_frame_visible = true;
 	main_status_hide_locked();
 
+	/* Capture the band areas of this frame so a subsequent press can invert
+	 * the right pixels (cache-miss fallback). The packed 1bpp bitmap starts
+	 * just after the I1 palette prefix. */
+	press_feedback_capture_locked(slot + LLSS_I1_PALETTE_BYTES);
+
+	/* Clear any stale press-feedback overlay — the new frame supersedes it. */
+	press_feedback_hide_locked();
+
 	/* New-frame bookkeeping: resets the screensaver idle timer, counts the
 	 * frame as pending, and auto-returns from the screensaver if it is showing
 	 * (in which case we must load the main screen and force a full refresh). */
@@ -436,6 +445,11 @@ void ui_init(void)
 
 	/* device_ui creates and loads the log screen; keeps lvgl_mutex held */
 	device_ui_init(lvgl_main_scr);
+
+	/* Press-feedback overlays sit on the main server-frame screen so they
+	 * stack above frame_img and clear naturally when a new frame submits. */
+	press_feedback_init(lvgl_main_scr);
+
 	ui_lvgl_flush(false, UI_CTX_SWITCH);
 
 	k_mutex_unlock(&lvgl_mutex);

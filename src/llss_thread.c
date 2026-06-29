@@ -29,7 +29,10 @@
 #include "input_events.h"
 #include "llss_client.h"
 #include "llss_storage.h"
+#include "llss_strip_cache.h"
 #include "llss_thread.h"
+#include "press_feedback.h"
+#include "section_attrs.h"
 #include "material_icons.h"
 #include "net_watchdog.h"
 #include "sys_watchdog.h"
@@ -79,6 +82,25 @@ static char refresh_token[LLSS_TOKEN_MAX];
 static char access_token[LLSS_TOKEN_MAX];
 static char hardware_id[16];
 static char last_frame_id[64];
+
+/* Latest pressed-strip ids advertised by the server. Updated on every state
+ * or input response; consumed by prefetch_pending_strips() which fills the
+ * SPIRAM strip cache so the press handler can blit feedback without an HTTP
+ * round-trip. Empty string = no strip for that band. */
+static char latest_top_strip_id[LLSS_STRIP_ID_MAX];
+static char latest_bottom_strip_id[LLSS_STRIP_ID_MAX];
+
+/* Latest enabled-slot bitmasks. -1 = server didn't advertise one this cycle
+ * (press_feedback falls back to its capture-time heuristic). */
+static int32_t latest_top_enabled_mask    = -1;
+static int32_t latest_bottom_enabled_mask = -1;
+
+/* Scratch buffer for a single strip fetch. PSRAM-backed; sized for the
+ * larger of the two bands. */
+#define STRIP_FETCH_BYTES (800 * MAX(CONFIG_LLSS_TOP_STRIP_HEIGHT, \
+				     CONFIG_LLSS_BOTTOM_STRIP_HEIGHT) / 8)
+static uint8_t strip_fetch_buf[STRIP_FETCH_BYTES]
+	LLSS_EXT_RAM_NOINIT("strip_fetch");
 
 /* Count of consecutive full-auth credential rejections (see self-heal in
  * do_full_auth). Reset to 0 on any successful authentication. */
@@ -212,6 +234,15 @@ static void on_input(struct input_event *evt, void *user_data)
 		 * release by restarting the count. */
 		atomic_set(&slot->state, KEY_PRESSED);
 		k_work_reschedule(&slot->long_work, K_MSEC(LONG_PRESS_MS));
+
+		/* Local press feedback on finger-down (not on release):
+		 * blit a pre-computed per-slot variant. Cleared on next
+		 * server frame submit. */
+		enum ui_btn btn = ui_btn_from_keycode(evt->code);
+
+		if (btn != UI_BTN_NONE) {
+			press_feedback_show(btn);
+		}
 		return;
 	}
 
@@ -771,6 +802,15 @@ static enum app_state do_send_input(const struct button_event *bev)
 
 	note_server_ok();
 
+	strncpy(latest_top_strip_id, input.top_strip_id,
+		sizeof(latest_top_strip_id) - 1);
+	latest_top_strip_id[sizeof(latest_top_strip_id) - 1] = '\0';
+	strncpy(latest_bottom_strip_id, input.bottom_strip_id,
+		sizeof(latest_bottom_strip_id) - 1);
+	latest_bottom_strip_id[sizeof(latest_bottom_strip_id) - 1] = '\0';
+	latest_top_enabled_mask    = input.top_enabled_mask;
+	latest_bottom_enabled_mask = input.bottom_enabled_mask;
+
 	if (input.status == LLSS_INPUT_NEW_FRAME && input.frame_id[0]) {
 		strncpy(last_frame_id, input.frame_id,
 			sizeof(last_frame_id) - 1);
@@ -847,6 +887,15 @@ static enum app_state do_poll(void)
 	poll_interval_ms = CLAMP(state.poll_after_ms,
 				 CONFIG_LLSS_MIN_POLL_MS, CONFIG_LLSS_MAX_POLL_MS);
 
+	strncpy(latest_top_strip_id, state.top_strip_id,
+		sizeof(latest_top_strip_id) - 1);
+	latest_top_strip_id[sizeof(latest_top_strip_id) - 1] = '\0';
+	strncpy(latest_bottom_strip_id, state.bottom_strip_id,
+		sizeof(latest_bottom_strip_id) - 1);
+	latest_bottom_strip_id[sizeof(latest_bottom_strip_id) - 1] = '\0';
+	latest_top_enabled_mask    = state.top_enabled_mask;
+	latest_bottom_enabled_mask = state.bottom_enabled_mask;
+
 	switch (state.action) {
 	case LLSS_ACTION_FETCH_FRAME:
 		if (state.frame_id[0] && !ui_has_server_frame()) {
@@ -880,6 +929,50 @@ static enum app_state do_poll(void)
 		}
 		return STATE_POLLING;
 	}
+}
+
+/* Fetch one pressed strip into the cache if it isn't there yet. The session
+ * is assumed to be open; runs in the LLSS thread (no extra worker), so the
+ * cost is paid between polls — never on the press handler's critical path. */
+static void prefetch_strip(const char *strip_id)
+{
+	if (!strip_id || !strip_id[0]) {
+		return;
+	}
+	if (llss_strip_cache_get(strip_id, NULL)) {
+		return;
+	}
+
+	size_t len = 0;
+	int rc = llss_fetch_pressed_strip(access_token, device_id, strip_id,
+					  strip_fetch_buf,
+					  sizeof(strip_fetch_buf), &len);
+	if (rc == 0 && len > 0) {
+		llss_strip_cache_put(strip_id, strip_fetch_buf, len);
+	} else if (rc != -ENOENT) {
+		LOG_WRN("strip prefetch %s failed: %d", strip_id, rc);
+	}
+}
+
+static void prefetch_pending_strips(void)
+{
+	prefetch_strip(latest_top_strip_id);
+	prefetch_strip(latest_bottom_strip_id);
+
+	/* Upgrade the per-slot press-feedback variants now that strips may
+	 * be in cache. Bands with no cached strip keep the INVERT variants.
+	 * Same critical section also applies the latest server-side enabled
+	 * masks, overriding the capture-time heuristic for any band the
+	 * server actually advertised. */
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	press_feedback_refresh_strips_locked(latest_top_strip_id,
+					     latest_bottom_strip_id);
+	press_feedback_set_enabled_masks_locked(
+		(uint8_t)(latest_top_enabled_mask & 0xFF),
+		latest_top_enabled_mask >= 0,
+		(uint8_t)(latest_bottom_enabled_mask & 0xFF),
+		latest_bottom_enabled_mask >= 0);
+	k_mutex_unlock(&lvgl_mutex);
 }
 
 static enum app_state do_fetch_frame(void)
@@ -960,6 +1053,12 @@ static enum app_state do_fetch_frame(void)
 		}
 	}
 
+	/* Frame is on the wire to the panel — opportunistically pull the
+	 * pressed strips so the next press has local feedback. Cache hits
+	 * are no-ops; misses run sequentially in this thread (acceptable —
+	 * total time stays well under one poll interval). */
+	prefetch_pending_strips();
+
 	return STATE_POLLING;
 }
 
@@ -985,6 +1084,8 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 	 * wait for SYS_FLAG_WIFI_READY here — only for net_if_get_default(). */
 	build_hardware_id();
 	LOG_INF("Hardware ID: %s", hardware_id);
+
+	llss_strip_cache_init();
 
 	int32_t rc = llss_client_init();
 
