@@ -95,6 +95,33 @@ enum ui_btn ui_btn_from_name(const char *name)
 	if (strcmp(name, "8") == 0) {
 		return UI_BTN_8;
 	}
+	/* Top strip (btn9..btn16). Per the hardware contract:
+	 *   9       : no hardware — never pressable
+	 *   10/menu : LOCAL menu trigger (UI_BTN_MENU)
+	 *   11, 12  : local-only, no firmware action wired yet
+	 *   13      : HL_LEFT
+	 *   14      : HL_RIGHT
+	 *   15      : ENTER
+	 *   16      : ESC
+	 * The unmapped slots return UI_BTN_NONE so the shell can report
+	 * "no key here" instead of silently firing the wrong button. */
+	if (strcmp(name, "10") == 0 ||
+	    strcmp(name, "menu") == 0 ||
+	    strcmp(name, "BTN_10") == 0) {
+		return UI_BTN_MENU;
+	}
+	if (strcmp(name, "13") == 0 || strcmp(name, "BTN_13") == 0) {
+		return UI_BTN_HL_LEFT;
+	}
+	if (strcmp(name, "14") == 0 || strcmp(name, "BTN_14") == 0) {
+		return UI_BTN_HL_RIGHT;
+	}
+	if (strcmp(name, "15") == 0 || strcmp(name, "BTN_15") == 0) {
+		return UI_BTN_ENTER;
+	}
+	if (strcmp(name, "16") == 0 || strcmp(name, "BTN_16") == 0) {
+		return UI_BTN_ESC;
+	}
 	if ((strcmp(name, "en") == 0) || (strcmp(name, "enter") == 0)) {
 		return UI_BTN_ENTER;
 	}

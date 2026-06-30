@@ -53,6 +53,11 @@ static const struct slot_pos slot_table[UI_BTN_COUNT] = {
 	[UI_BTN_HL_RIGHT] = { BAND_TOP, 5 },
 	[UI_BTN_ENTER]    = { BAND_TOP, 6 },
 	[UI_BTN_ESC]      = { BAND_TOP, 7 },
+	/* MENU is local-only: device_ui owns the visual. Without this
+	 * explicit entry the designated-initializer-zero default would land
+	 * on { BAND_TOP, 0 } and we'd flash the (empty) slot 0 on a menu
+	 * keydown. */
+	[UI_BTN_MENU]     = { BAND_NONE, 0 },
 };
 
 /* Slots that can receive a press from the HLSS-mapped top buttons (the

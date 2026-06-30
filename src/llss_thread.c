@@ -274,14 +274,21 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 {
 	if (argc < 2) {
 		shell_error(sh, "Usage: btn %s <NAME>", long_press ? "long" : "press");
-		shell_print(sh, "  NAME: BTN_1..BTN_8, ENTER, ESC, HL_LEFT, HL_RIGHT");
+		shell_print(sh, "  Bottom strip : BTN_1..BTN_8");
+		shell_print(sh, "  Top strip    : BTN_10 (menu) | BTN_13 (HL_LEFT) |");
+		shell_print(sh, "                 BTN_14 (HL_RIGHT) | BTN_15 (ENTER) |");
+		shell_print(sh, "                 BTN_16 (ESC)");
+		shell_print(sh, "  Aliases      : ENTER, ESC, HL_LEFT, HL_RIGHT, MENU");
+		shell_print(sh, "  Unmapped     : BTN_9 (no hardware), BTN_11..BTN_12");
 		return -EINVAL;
 	}
 
 	int32_t code = ui_btn_to_keycode(ui_btn_from_name(argv[1]));
 
 	if (code < 0) {
-		shell_error(sh, "Unknown button: %s", argv[1]);
+		shell_error(sh, "Unknown button: %s "
+				"(try 1..8, 10, 13..16, or their aliases)",
+				argv[1]);
 		return -EINVAL;
 	}
 
@@ -308,7 +315,7 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 static int cmd_btn_shortcut(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc < 2) {
-		shell_error(sh, "Usage: b <1..8|en|esc|hl|hr>");
+		shell_error(sh, "Usage: b <1..8|10|13..16|en|esc|hl|hr|menu>");
 		return -EINVAL;
 	}
 
@@ -327,10 +334,12 @@ static int cmd_btn_long(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_btn,
 	SHELL_CMD_ARG(press, NULL,
-		      "Short press: btn press <BTN_1..8|ENTER|ESC|HL_LEFT|HL_RIGHT>",
+		      "Short press: btn press <BTN_1..8|BTN_10|BTN_13..16|"
+		      "ENTER|ESC|HL_LEFT|HL_RIGHT|MENU>",
 		      cmd_btn_press, 2, 0),
 	SHELL_CMD_ARG(long,  NULL,
-		      "Long press:  btn long  <BTN_1..8|ENTER|ESC|HL_LEFT|HL_RIGHT>",
+		      "Long press:  btn long  <BTN_1..8|BTN_10|BTN_13..16|"
+		      "ENTER|ESC|HL_LEFT|HL_RIGHT|MENU>",
 		      cmd_btn_long, 2, 0),
 	SHELL_SUBCMD_SET_END
 );
@@ -339,7 +348,8 @@ SHELL_CMD_REGISTER(btn, &sub_btn,
 		   "Inject button events through the input subsystem", NULL);
 
 SHELL_CMD_ARG_REGISTER(b, NULL,
-		       "Shortcut for short button press: b <1..8|en|esc|hl|hr>",
+		       "Shortcut for short button press: "
+		       "b <1..8|10|13..16|en|esc|hl|hr|menu>",
 		       cmd_btn_shortcut, 2, 0);
 
 /* =========================================================================
