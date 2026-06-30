@@ -97,8 +97,12 @@ static int32_t latest_bottom_enabled_mask = -1;
 
 /* Scratch buffer for a single strip fetch. PSRAM-backed; sized for the
  * larger of the two bands. */
+/* +1 byte covers the NUL terminator do_request reserves at the end of
+ * its receive buffer (room = buf_size - len - 1). Without it the strip
+ * body — which is exactly width × height / 8 — gets truncated by one
+ * byte and triggers "HTTP response truncated". */
 #define STRIP_FETCH_BYTES (800 * MAX(CONFIG_LLSS_TOP_STRIP_HEIGHT, \
-				     CONFIG_LLSS_BOTTOM_STRIP_HEIGHT) / 8)
+				     CONFIG_LLSS_BOTTOM_STRIP_HEIGHT) / 8 + 1)
 static uint8_t strip_fetch_buf[STRIP_FETCH_BYTES]
 	LLSS_EXT_RAM_NOINIT("strip_fetch");
 

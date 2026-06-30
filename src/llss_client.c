@@ -1245,6 +1245,15 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 		return rc;
 	}
 
+	/* TEMP DEBUG: dump the raw body + the parsed bitmask so we can see
+	 * which fields the json_obj_parser matched (bit 8 = full_refresh). */
+	printk("DIAG state JSON: %.*s\n",
+	       (int)MIN(strnlen((char *)json_recv_buf, sizeof(json_recv_buf)),
+			(size_t)600),
+	       json_recv_buf);
+	printk("DIAG state parsed rc=0x%x full_refresh=%d\n",
+	       rc, (int)resp.full_refresh);
+
 	/* Map action string → enum */
 	if (strcmp(resp.action, "FETCH_FRAME") == 0) {
 		state_out->action = LLSS_ACTION_FETCH_FRAME;
