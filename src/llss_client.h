@@ -54,6 +54,10 @@ struct llss_device_state {
 	 * one (device falls back to the local all-white-slot heuristic). */
 	int32_t          top_enabled_mask;
 	int32_t          bottom_enabled_mask;
+	/* When true, the device should drive a full e-ink refresh on this
+	 * frame instead of partial. HLSS sets it for view-mode toggles and
+	 * board-state changes (move applied, opponent move). */
+	bool             full_refresh;
 };
 
 struct llss_input_response {
@@ -64,6 +68,7 @@ struct llss_input_response {
 	char                   bottom_strip_id[LLSS_STRIP_ID_MAX];
 	int32_t                top_enabled_mask;    /* -1 = unspecified */
 	int32_t                bottom_enabled_mask; /* -1 = unspecified */
+	bool                   full_refresh;
 };
 
 /* =========================================================================

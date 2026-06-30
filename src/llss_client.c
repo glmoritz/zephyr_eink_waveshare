@@ -889,6 +889,7 @@ struct state_resp {
 	char bottom_strip_id[LLSS_STRIP_ID_MAX];
 	int32_t top_enabled_mask;
 	int32_t bottom_enabled_mask;
+	bool    full_refresh;
 };
 
 static const struct json_obj_descr state_resp_descr[] = {
@@ -900,6 +901,7 @@ static const struct json_obj_descr state_resp_descr[] = {
 	JSON_OBJ_DESCR_PRIM(struct state_resp, bottom_strip_id,     JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct state_resp, top_enabled_mask,    JSON_TOK_NUMBER),
 	JSON_OBJ_DESCR_PRIM(struct state_resp, bottom_enabled_mask, JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct state_resp, full_refresh,        JSON_TOK_TRUE),
 };
 
 /* --- InputProcessResponse --- */
@@ -912,6 +914,7 @@ struct input_resp {
 	char bottom_strip_id[LLSS_STRIP_ID_MAX];
 	int32_t top_enabled_mask;
 	int32_t bottom_enabled_mask;
+	bool    full_refresh;
 };
 
 static const struct json_obj_descr input_resp_descr[] = {
@@ -923,6 +926,7 @@ static const struct json_obj_descr input_resp_descr[] = {
 	JSON_OBJ_DESCR_PRIM(struct input_resp, bottom_strip_id,     JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, top_enabled_mask,    JSON_TOK_NUMBER),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, bottom_enabled_mask, JSON_TOK_NUMBER),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, full_refresh,        JSON_TOK_TRUE),
 };
 
 /* =========================================================================
@@ -1265,6 +1269,7 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 
 	state_out->top_enabled_mask    = resp.top_enabled_mask;
 	state_out->bottom_enabled_mask = resp.bottom_enabled_mask;
+	state_out->full_refresh        = resp.full_refresh;
 
 	state_out->poll_after_ms = CLAMP(resp.poll_after_ms,
 					 CONFIG_LLSS_MIN_POLL_MS,
@@ -1457,6 +1462,7 @@ int llss_send_input(const char *access_token, const char *device_id,
 	resp_out->bottom_strip_id[sizeof(resp_out->bottom_strip_id) - 1] = '\0';
 	resp_out->top_enabled_mask    = resp.top_enabled_mask;
 	resp_out->bottom_enabled_mask = resp.bottom_enabled_mask;
+	resp_out->full_refresh        = resp.full_refresh;
 	resp_out->poll_after_ms = CLAMP(resp.poll_after_ms,
 					CONFIG_LLSS_MIN_POLL_MS,
 					CONFIG_LLSS_MAX_POLL_MS);

@@ -117,6 +117,11 @@ static int llss_wdt = -1;
 
 static int32_t poll_interval_ms = CONFIG_LLSS_POLL_INTERVAL_MS;
 
+/* Server-side hint for the next frame fetch. Captured from /state or
+ * /inputs when the action is FETCH_FRAME/NEW_FRAME; consumed by
+ * do_fetch_frame when it calls display_frame_submit. */
+static bool latest_full_refresh;
+
 /* =========================================================================
  * Button input
  * ========================================================================= */
@@ -820,6 +825,7 @@ static enum app_state do_send_input(const struct button_event *bev)
 	latest_bottom_strip_id[sizeof(latest_bottom_strip_id) - 1] = '\0';
 	latest_top_enabled_mask    = input.top_enabled_mask;
 	latest_bottom_enabled_mask = input.bottom_enabled_mask;
+	latest_full_refresh        = input.full_refresh;
 
 	if (input.status == LLSS_INPUT_NEW_FRAME && input.frame_id[0]) {
 		strncpy(last_frame_id, input.frame_id,
@@ -905,6 +911,7 @@ static enum app_state do_poll(void)
 	latest_bottom_strip_id[sizeof(latest_bottom_strip_id) - 1] = '\0';
 	latest_top_enabled_mask    = state.top_enabled_mask;
 	latest_bottom_enabled_mask = state.bottom_enabled_mask;
+	latest_full_refresh        = state.full_refresh;
 
 	switch (state.action) {
 	case LLSS_ACTION_FETCH_FRAME:
@@ -1054,7 +1061,8 @@ static enum app_state do_fetch_frame(void)
 
 	if (png_len > 0) {
 		int64_t t_sub0 = k_uptime_get();
-		int32_t drc = display_frame_submit(png_len);
+		int32_t drc = display_frame_submit(png_len, latest_full_refresh);
+		latest_full_refresh = false; /* one-shot hint */
 		printk("DIAG submit: %lldms drc=%d\n",
 		       (long long)(k_uptime_get() - t_sub0), drc);
 

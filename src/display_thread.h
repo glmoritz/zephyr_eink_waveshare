@@ -105,8 +105,13 @@ uint8_t *display_frame_write_buf(size_t *cap);
  * pending frame is dropped (latest-frame-wins).
  *
  * @param len  Number of bytes written into the write buffer.
+ * @param full_refresh  When true, the next flush uses UI_CTX_SWITCH (full
+ *                      e-ink refresh) instead of UI_CTX_SERVER (partial).
+ *                      Use for frames where ghosting from a partial
+ *                      refresh would be objectionable (move applied, view
+ *                      mode change, etc.).
  * @return 0 on success, -ENODEV if display not ready, -EMSGSIZE if too large.
  */
-int display_frame_submit(size_t len);
+int display_frame_submit(size_t len, bool full_refresh);
 
 #endif /* DISPLAY_THREAD_H_ */

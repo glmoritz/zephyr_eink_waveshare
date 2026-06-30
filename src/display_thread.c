@@ -88,6 +88,7 @@ static uint8_t frame_mem[FRAME_BUF_COUNT][CONFIG_LLSS_FRAME_BUF_SIZE]
 struct frame_slot {
 	uint8_t *buf;
 	size_t   len;
+	bool     full_refresh; /* server hint: full e-ink refresh for this frame */
 };
 
 static struct frame_slot fb_front  = { .buf = frame_mem[0] };
@@ -286,7 +287,8 @@ static const lv_color32_t i1_palette[2] = {
  * image: LVGL decodes it line-by-line on demand (image cache + RAM-load are
  * disabled), so there is no full-screen RGB expansion and no PNG decode.
  */
-static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
+static void display_frame_locked(uint8_t *slot, size_t bitmap_len,
+				 bool full_refresh)
 {
 	static bool first_frame = true;
 	bool was_first = first_frame;
@@ -357,12 +359,14 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len)
 
 	/* Only flush if the main screen is actually visible. Server frames are
 	 * already dithered to pure B/W by the server — do not re-dither, and they
-	 * are mono, so they are partial-refresh capable. The first frame and a
-	 * screensaver auto-return both switch screens, so force a full there. */
+	 * are mono, so they are partial-refresh capable. The first frame, a
+	 * screensaver auto-return and a server-side full_refresh hint all force
+	 * a full refresh here (UI_CTX_SWITCH); steady state stays partial. */
 	if (!device_ui_is_active()) {
+		const bool force_full =
+			was_first || saver_returned || full_refresh;
 		ui_lvgl_flush(false,
-			      (was_first || saver_returned) ? UI_CTX_SWITCH
-							    : UI_CTX_SERVER);
+			      force_full ? UI_CTX_SWITCH : UI_CTX_SERVER);
 	}
 }
 
@@ -403,10 +407,12 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 			continue;
 		}
 
-		LOG_INF("Displaying frame (%zu bytes)", fb_back.len);
+		LOG_INF("Displaying frame (%zu bytes, %s)",
+			fb_back.len, fb_back.full_refresh ? "full" : "partial");
 
 		k_mutex_lock(&lvgl_mutex, K_FOREVER);
-		display_frame_locked(fb_back.buf, fb_back.len);
+		display_frame_locked(fb_back.buf, fb_back.len,
+				     fb_back.full_refresh);
 		k_mutex_unlock(&lvgl_mutex);
 	}
 }
@@ -504,7 +510,7 @@ uint8_t *display_frame_write_buf(size_t *cap)
 	return fb_front.buf + LLSS_I1_PALETTE_BYTES;
 }
 
-int display_frame_submit(size_t len)
+int display_frame_submit(size_t len, bool full_refresh)
 {
 	if (!display_worker_ready) {
 		return -ENODEV;
@@ -516,7 +522,8 @@ int display_frame_submit(size_t len)
 	/* Publish front as the new mailbox, recycle the old mailbox as the
 	 * next write target.  Never blocks; latest frame wins. */
 	k_mutex_lock(&fb_mutex, K_FOREVER);
-	fb_front.len = len;
+	fb_front.len          = len;
+	fb_front.full_refresh = full_refresh;
 	struct frame_slot tmp = fb_middle;
 
 	fb_middle = fb_front;
