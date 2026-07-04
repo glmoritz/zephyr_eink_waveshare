@@ -72,4 +72,55 @@ int custom_ssd16xx_set_color_mode(const struct device *dev,
  */
 int custom_ssd16xx_set_dither(const struct device *dev, bool enable);
 
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+/*
+ * Waveform test harness (shell `epd` commands). Serialize with the display
+ * pipeline: callers must hold lvgl_mutex (see display_thread.h).
+ */
+
+enum custom_ssd16xx_test_pattern {
+	CUSTOM_SSD16XX_PAT_WHITE = 0,
+	CUSTOM_SSD16XX_PAT_BLACK,
+	CUSTOM_SSD16XX_PAT_CHECKER,  /* 64x64 px squares */
+	CUSTOM_SSD16XX_PAT_DIGITS,   /* 4 big solid blocks (screensaver-stain scenario) */
+	CUSTOM_SSD16XX_PAT_GRADIENT, /* 4 vertical bands at 2bpp levels 0..3 */
+};
+
+/* Which controller RAM planes custom_ssd16xx_test_sequence() rewrites before
+ * triggering the update. NONE replays against whatever the controller holds.
+ */
+enum custom_ssd16xx_test_ram {
+	CUSTOM_SSD16XX_RAM_BOTH = 0, /* BW=bw_plane, RED=red_plane (our full path) */
+	CUSTOM_SSD16XX_RAM_BW,       /* BW only (vendor EPD_3IN97_Display path) */
+	CUSTOM_SSD16XX_RAM_NONE,
+};
+
+struct custom_ssd16xx_status {
+	uint32_t partial_count;
+	uint32_t full_refresh_interval;
+	bool prev_valid;
+	uint8_t color_mode;
+	uint32_t last_refresh_ms;
+	uint8_t last_seq; /* last 0x22 value driven */
+};
+
+/* Fill the framebuffer planes with a test pattern (does not touch the panel;
+ * follow with refresh_full/refresh_partial/test_sequence). */
+int custom_ssd16xx_test_fill(const struct device *dev,
+			     enum custom_ssd16xx_test_pattern pattern);
+
+/*
+ * Raw update-sequence experiment: optionally rewrite RAM planes, optionally
+ * write the temperature register (0x1A, -1 skips) and border waveform (0x3C,
+ * -1 skips), then run 0x22=<seq> + master activation and busy-wait. Marks the
+ * frame synced so the normal pipeline stays consistent afterwards.
+ */
+int custom_ssd16xx_test_sequence(const struct device *dev, uint8_t seq,
+				 int16_t border, int16_t temp,
+				 enum custom_ssd16xx_test_ram ram);
+
+int custom_ssd16xx_get_status(const struct device *dev,
+			      struct custom_ssd16xx_status *status);
+#endif /* CONFIG_LLSS_EPD_TEST_SHELL */
+
 #endif /* CUSTOM_SSD16XX_H */

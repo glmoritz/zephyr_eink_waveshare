@@ -46,6 +46,16 @@ config LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
 	  SSD16xx panel driver. Disable this to use the controller's integrated
 	  OTP full-refresh waveform instead.
 
+config LLSS_EPD_TEST_SHELL
+	bool "EPD waveform test harness shell commands"
+	depends on SHELL
+	default y
+	help
+	  Register the `epd` shell command group (pattern fills, raw 0x22
+	  update-sequence experiments, refresh timing/counters) for tuning the
+	  SSD1677 refresh strategy over the telnet shell. Hardware-only; no-op
+	  on native_sim. See docs/epd/WAVEFORMS.md.
+
 config LLSS_TOP_STRIP_HEIGHT
 	int "Top button-label strip height (px) reported to server"
 	default 50

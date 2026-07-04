@@ -41,6 +41,7 @@ LOG_MODULE_REGISTER(custom_ssd16xx_800x480, CONFIG_DISPLAY_LOG_LEVEL);
 #define SSD16XX_CMD_DISP_UPDATE_CTRL2     0x22
 #define SSD16XX_CMD_MASTER_ACTIVATION     0x20
 #define SSD16XX_CMD_DEEP_SLEEP            0x10
+#define SSD16XX_CMD_WRITE_TEMP            0x1A
 
 #if CONFIG_LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
 /*
@@ -105,6 +106,10 @@ struct custom_ssd16xx_data {
 	/* Ordered dithering during L8->2bpp conversion (see header). Off for
 	 * pre-dithered server frames, on for device-local UI. */
 	bool dither;
+
+	/* Telemetry for the `epd status` shell command / refresh tuning. */
+	uint32_t last_refresh_ms;
+	uint8_t last_seq;
 };
 
 static int custom_ssd16xx_busy_wait(const struct device *dev, uint32_t timeout_ms)
@@ -337,12 +342,15 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 	/* Display Update Control 2: 0xF7 = controller OTP/integrated waveform */
 	tmp[0] = 0xF7;
 #endif
+	data->last_seq = tmp[0];
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
 	}
 
 	/* Master Activation */
+	uint32_t t0 = k_uptime_get_32();
+
 	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
 	if (err < 0) {
 		return err;
@@ -354,7 +362,8 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 		LOG_ERR("EPD refresh timed out");
 		return err;
 	}
-	LOG_DBG("EPD refresh complete");
+	data->last_refresh_ms = k_uptime_get_32() - t0;
+	LOG_DBG("EPD refresh complete (%u ms)", data->last_refresh_ms);
 
 	custom_ssd16xx_mark_synced(data);
 	return 0;
@@ -397,6 +406,7 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 	 * ghosting is bad: load lut_1Gray_A2 via 0x32 and use 0xC7 here instead.)
 	 */
 	tmp[0] = 0xFC;
+	data->last_seq = tmp[0];
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -416,6 +426,8 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 		return err;
 	}
 
+	uint32_t t0 = k_uptime_get_32();
+
 	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
 	if (err < 0) {
 		return err;
@@ -427,6 +439,7 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 		LOG_ERR("EPD partial refresh timed out");
 		return err;
 	}
+	data->last_refresh_ms = k_uptime_get_32() - t0;
 
 	/* Re-sync: write the new frame into RED RAM too, so the controller's
 	 * internal "previous" matches reality for the next partial. Most
@@ -646,6 +659,170 @@ static int custom_ssd16xx_init(const struct device *dev)
 
 	return custom_ssd16xx_panel_init(dev);
 }
+
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+/* Set one pixel at a 2bpp level (0=black..3=white) in both planes. */
+static inline void test_set_px(struct custom_ssd16xx_data *data,
+			       uint16_t px, uint16_t py, uint8_t level)
+{
+	uint16_t byte_idx = py * CUSTOM_SSD16XX_COLS + px / 8u;
+	uint8_t bit = BIT(7u - (px % 8u));
+
+	if (level & 0x01u) {
+		data->bw_plane[byte_idx] |= bit;
+	} else {
+		data->bw_plane[byte_idx] &= ~bit;
+	}
+	if (level & 0x02u) {
+		data->red_plane[byte_idx] |= bit;
+	} else {
+		data->red_plane[byte_idx] &= ~bit;
+	}
+}
+
+int custom_ssd16xx_test_fill(const struct device *dev,
+			     enum custom_ssd16xx_test_pattern pattern)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	switch (pattern) {
+	case CUSTOM_SSD16XX_PAT_WHITE:
+		memset(data->bw_plane, 0xFF, CUSTOM_SSD16XX_BUF_BYTES);
+		memset(data->red_plane, 0xFF, CUSTOM_SSD16XX_BUF_BYTES);
+		break;
+	case CUSTOM_SSD16XX_PAT_BLACK:
+		memset(data->bw_plane, 0x00, CUSTOM_SSD16XX_BUF_BYTES);
+		memset(data->red_plane, 0x00, CUSTOM_SSD16XX_BUF_BYTES);
+		break;
+	case CUSTOM_SSD16XX_PAT_CHECKER:
+		for (uint16_t py = 0; py < CUSTOM_SSD16XX_ROWS; py++) {
+			for (uint16_t px = 0; px < 800; px++) {
+				bool black = ((px / 64u) + (py / 64u)) & 1u;
+
+				test_set_px(data, px, py, black ? 0u : 3u);
+			}
+		}
+		break;
+	case CUSTOM_SSD16XX_PAT_DIGITS:
+		/* White field with 4 large solid blocks — reproduces the
+		 * screensaver big-digit ghosting scenario. */
+		memset(data->bw_plane, 0xFF, CUSTOM_SSD16XX_BUF_BYTES);
+		memset(data->red_plane, 0xFF, CUSTOM_SSD16XX_BUF_BYTES);
+		for (uint16_t py = 100; py < 380; py++) {
+			for (uint8_t blk = 0; blk < 4; blk++) {
+				uint16_t x0 = 72u + blk * 184u;
+
+				for (uint16_t px = x0; px < x0 + 120u; px++) {
+					test_set_px(data, px, py, 0u);
+				}
+			}
+		}
+		break;
+	case CUSTOM_SSD16XX_PAT_GRADIENT:
+		/* 4 vertical bands at 2bpp levels 0..3. Under a mono waveform
+		 * the BW plane reads black/white/black/white — which also makes
+		 * plane-role/polarity mixups visible at a glance. */
+		for (uint16_t py = 0; py < CUSTOM_SSD16XX_ROWS; py++) {
+			for (uint16_t px = 0; px < 800; px++) {
+				test_set_px(data, px, py, px / 200u);
+			}
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int custom_ssd16xx_test_sequence(const struct device *dev, uint8_t seq,
+				 int16_t border, int16_t temp,
+				 enum custom_ssd16xx_test_ram ram)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[1];
+	int32_t err;
+
+	if (ram != CUSTOM_SSD16XX_RAM_NONE) {
+		err = custom_ssd16xx_reset_ram_ptr(dev);
+		if (err < 0) {
+			return err;
+		}
+		err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_BW_RAM,
+					       data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+		if (err < 0) {
+			return err;
+		}
+	}
+	if (ram == CUSTOM_SSD16XX_RAM_BOTH) {
+		err = custom_ssd16xx_reset_ram_ptr(dev);
+		if (err < 0) {
+			return err;
+		}
+		err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM,
+					       data->red_plane, CUSTOM_SSD16XX_BUF_BYTES);
+		if (err < 0) {
+			return err;
+		}
+	}
+
+	if (temp >= 0) {
+		tmp[0] = (uint8_t)temp;
+		err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_TEMP, tmp, 1);
+		if (err < 0) {
+			return err;
+		}
+	}
+
+	if (border >= 0) {
+		tmp[0] = (uint8_t)border;
+		err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
+		if (err < 0) {
+			return err;
+		}
+	}
+
+	tmp[0] = seq;
+	data->last_seq = seq;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	uint32_t t0 = k_uptime_get_32();
+
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_busy_wait(dev, CUSTOM_SSD16XX_REFRESH_TIMEOUT_MS);
+	if (err < 0) {
+		LOG_ERR("EPD test sequence 0x%02X timed out", seq);
+		return err;
+	}
+	data->last_refresh_ms = k_uptime_get_32() - t0;
+	LOG_INF("EPD seq 0x%02X done in %u ms", seq, data->last_refresh_ms);
+
+	/* Keep the pipeline's diff baseline consistent with what's on glass. */
+	custom_ssd16xx_mark_synced(data);
+	return 0;
+}
+
+int custom_ssd16xx_get_status(const struct device *dev,
+			      struct custom_ssd16xx_status *status)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	status->partial_count = data->partial_count;
+	status->full_refresh_interval = data->full_refresh_interval;
+	status->prev_valid = data->prev_valid;
+	status->color_mode = (uint8_t)data->color_mode;
+	status->last_refresh_ms = data->last_refresh_ms;
+	status->last_seq = data->last_seq;
+	return 0;
+}
+#endif /* CONFIG_LLSS_EPD_TEST_SHELL */
 
 static DEVICE_API(display, custom_ssd16xx_api) = {
 	.blanking_on = custom_ssd16xx_blanking_on,

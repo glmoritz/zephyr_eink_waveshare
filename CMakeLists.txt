@@ -41,6 +41,7 @@ target_sources(app PRIVATE
 # Custom SSD16xx driver is hardware-only — SDL display takes its place on sim.
 if(NOT BOARD MATCHES "native_sim")
     target_sources(app PRIVATE src/display_ssd16xx_800x480.c)
+    target_sources_ifdef(CONFIG_LLSS_EPD_TEST_SHELL app PRIVATE src/epd_test_shell.c)
 endif()
 
 # Temporary deterministic frame pattern self-test.
