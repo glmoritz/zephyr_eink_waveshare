@@ -39,12 +39,24 @@ config LLSS_DISPLAY_BIT_DEPTH
 	  on device via LVGL's lodepng integration.
 
 config LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
-	bool "Use custom full-refresh SSD16xx LUT"
+	bool "Use custom mode-2 GC LUT for full refresh"
 	default y
 	help
-	  Keep the custom 4-gray full-refresh waveform LUT for the hardware
-	  SSD16xx panel driver. Disable this to use the controller's integrated
-	  OTP full-refresh waveform instead.
+	  Full refresh via the hand-built mode-2 GC waveform (lut_gc_mode2)
+	  instead of the factory OTP mode-1 full (0x22=0xF7). On this unit the
+	  OTP mode-1 banks under-drive fine vertical detail (dithered regions
+	  wash out — 2026-07-04 investigation, docs/epd/WAVEFORMS.md), while
+	  every mode-2 waveform renders correctly. Disable only for OTP A/B
+	  experiments.
+
+config LLSS_EPD_FAST_FULL_TEMP
+	hex "Fast-full fake temperature bank (written to 0x1A)"
+	default 0x6A
+	help
+	  Temperature value faked into the SSD1677 before a fast-full refresh
+	  (0x22=0xD7): selects a hotter, shorter factory OTP waveform bank.
+	  0x6A is the vendor's "Fast(1.5s)" value for this panel. Sweep with
+	  `epd seq d7 - <temp>` before changing.
 
 config LLSS_EPD_TEST_SHELL
 	bool "EPD waveform test harness shell commands"

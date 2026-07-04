@@ -1,0 +1,58 @@
+PATCH: zephyr_shell_telnet_replace_stale_client — let a new telnet shell session replace the old one
+=================================================================================================
+
+Written against: Zephyr 4.5.0-dev  (shell_telnet.c as shipped in /opt/toolchains/zephyr on 2026-06-29)
+Target platform: any   (shell backend behavior only)
+Application:     /workspace/projects/hello_eink
+
+SUMMARY
+-------
+Zephyr's built-in telnet shell backend is single-client. When a second client
+connects while one session is already active, `telnet_accept()` currently logs
+`Telnet client already connected.` and drops the new socket.
+
+For this project, that policy is awkward in practice: stale telnet sessions are
+common during native_sim bring-up and remote debugging, and the operator
+usually wants the *new* connection to take over immediately.
+
+WHAT THE PATCH DOES
+-------------------
+Changes `subsys/shell/backends/shell_telnet.c` so that when a new telnet client
+arrives and one is already connected, the backend cleanly closes the old client
+connection first and then binds the shell to the new socket.
+
+Behavior after this patch:
+
+  - first telnet client connects normally
+  - second telnet client connects and takes ownership of the shell
+  - the older client gets disconnected
+
+RATIONALE
+---------
+This keeps the backend single-client, which matches Zephyr shell's current
+design, but flips the admission policy to the operator-friendly direction.
+This is lower risk than attempting multi-client shell fanout.
+
+---
+
+--- a/subsys/shell/backends/shell_telnet.c
++++ b/subsys/shell/backends/shell_telnet.c
+@@ -363,10 +363,12 @@ static void telnet_accept(struct zsock_pollfd *pollfd)
+ 		return;
+ 	}
+ 
+-	if (sh_telnet->fds[SOCK_ID_CLIENT].fd > 0) {
+-		/* Too many connections. */
+-		ret = 0;
+-		LOG_ERR("Telnet client already connected.");
+-		goto error;
++	if (sh_telnet->fds[SOCK_ID_CLIENT].fd >= 0) {
++		LOG_INF("Replacing existing Telnet client with newer connection");
++		telnet_end_client_connection();
++		if (sh_telnet->fds[SOCK_ID_CLIENT].fd >= 0) {
++			ret = -EBUSY;
++			goto error;
++		}
+ 	}
+ 
+ 	sh_telnet->fds[SOCK_ID_CLIENT].fd = sock;

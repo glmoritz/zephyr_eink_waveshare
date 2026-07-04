@@ -210,9 +210,32 @@ static void main_status_hide_locked(void)
  * Public flush — shared with device_ui.c
  * ========================================================================= */
 
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+/* `epd hold on`: freeze the normal pipeline's panel access so waveform
+ * experiments aren't mangled by server frames / device-UI repaints. LVGL
+ * keeps accumulating dirty state and catches up on the flush after release. */
+static atomic_t epd_test_hold;
+
+void ui_test_hold(bool hold)
+{
+	atomic_set(&epd_test_hold, hold ? 1 : 0);
+}
+
+bool ui_test_hold_active(void)
+{
+	return atomic_get(&epd_test_hold) != 0;
+}
+#endif
+
 void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 {
 	const struct device *disp = DEVICE_DT_GET(DISPLAY_NODE);
+
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+	if (ui_test_hold_active()) {
+		return;
+	}
+#endif
 
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
 	/* Set before lv_task_handler() — that is what drives the driver's

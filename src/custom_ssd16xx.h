@@ -19,6 +19,13 @@ enum custom_ssd16xx_color_mode {
  */
 int custom_ssd16xx_refresh_full(const struct device *dev);
 
+/* Fast-full refresh: factory OTP waveform from a hotter temperature bank
+ * (0x1A=CONFIG_LLSS_EPD_FAST_FULL_TEMP + 0x22=0xD7). Fully driven and
+ * ghost-clearing like a full, somewhat quicker; for user-visible content
+ * changes (move confirmed, view toggle) where a GC full feels too slow.
+ */
+int custom_ssd16xx_refresh_fast(const struct device *dev);
+
 /*
  * Fast 1bpp partial refresh (~600ms). Falls back to a full refresh when:
  *   - color mode is not MONO (gray cannot partial),
@@ -84,6 +91,10 @@ enum custom_ssd16xx_test_pattern {
 	CUSTOM_SSD16XX_PAT_CHECKER,  /* 64x64 px squares */
 	CUSTOM_SSD16XX_PAT_DIGITS,   /* 4 big solid blocks (screensaver-stain scenario) */
 	CUSTOM_SSD16XX_PAT_GRADIENT, /* 4 vertical bands at 2bpp levels 0..3 */
+	CUSTOM_SSD16XX_PAT_DITHER1,  /* 1px checkerboard: worst-case drive load */
+	CUSTOM_SSD16XX_PAT_DITHER2,  /* 2px checkerboard: server-dither-like load */
+	CUSTOM_SSD16XX_PAT_HLINES,   /* 1px black rows every 8: fine VERTICAL detail */
+	CUSTOM_SSD16XX_PAT_VLINES,   /* 1px black cols every 8: fine HORIZONTAL detail */
 };
 
 /* Which controller RAM planes custom_ssd16xx_test_sequence() rewrites before
@@ -121,6 +132,35 @@ int custom_ssd16xx_test_sequence(const struct device *dev, uint8_t seq,
 
 int custom_ssd16xx_get_status(const struct device *dev,
 			      struct custom_ssd16xx_status *status);
+
+struct custom_ssd16xx_plane_cmp {
+	uint32_t diff_bytes;   /* bytes where BW and RED planes differ */
+	uint32_t first_diff;   /* offset of first differing byte (or UINT32_MAX) */
+	uint32_t bw_ink_pct;   /* % of black pixels in the BW plane */
+	uint32_t red_ink_pct;  /* % of black pixels in the RED plane */
+	uint32_t prev_diff_bytes; /* bytes where BW differs from prev (shadow) */
+};
+
+/* Diff the framebuffer planes against each other and the prev shadow —
+ * diagnoses "full mangled / partial fine" (a full displays RED, a partial
+ * ignores it: divergence means someone wrote one plane and not the other). */
+int custom_ssd16xx_test_compare(const struct device *dev,
+				struct custom_ssd16xx_plane_cmp *out);
+
+/* Raw register write (`epd reg`): send an arbitrary command + data bytes.
+ * For experiments only — e.g. 0x21 (Display Update Control 1) RED-bypass. */
+int custom_ssd16xx_test_reg(const struct device *dev, uint8_t cmd,
+			    const uint8_t *data, size_t len);
+
+/* Snapshot the BW plane into a spare buffer / restore it into both planes.
+ * Lets a captured real-world frame be replayed through arbitrary sequences
+ * after synthetic patterns overwrote the framebuffer. */
+int custom_ssd16xx_test_snap(const struct device *dev);
+int custom_ssd16xx_test_restore(const struct device *dev);
+
+/* Copy one row (100 bytes) of the BW plane into out. */
+int custom_ssd16xx_test_row(const struct device *dev, uint16_t row,
+			    uint8_t out[100]);
 #endif /* CONFIG_LLSS_EPD_TEST_SHELL */
 
 #endif /* CUSTOM_SSD16XX_H */

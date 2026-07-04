@@ -45,21 +45,46 @@ LOG_MODULE_REGISTER(custom_ssd16xx_800x480, CONFIG_DISPLAY_LOG_LEVEL);
 
 #if CONFIG_LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
 /*
- * 4-gray waveform LUT from the Waveshare 3.7" SSD16xx-family panel.
- * Same controller family as our 3.97" panel. Send via SSD16XX_CMD_WRITE_LUT (105 bytes).
+ * Custom mode-2 GC (full-clean) waveform for THIS unit. The panel's OTP
+ * mode-1 banks under-drive rows whose source data flips against the previous
+ * gate line (fine vertical detail washes out — see docs/epd/WAVEFORMS.md,
+ * 2026-07-04 investigation); every mode-2 waveform, including the old
+ * borrowed 3.7" LUT, renders the same content correctly. So the full refresh
+ * is a hand-built mode-2 waveform at the proven frame rate (FR nibble 0x2),
+ * driven with 0x22=0xCF exactly like the old LUT.
+ *
+ * Row indexing (0x21=0x00, both RAM planes = new image, level=(RED<<1)|BW):
+ *   L0 = black pixels, L3 = white pixels, L1/L2 unused (zero), L4 = VCOM (DC).
+ * VS phase codes: 00=VSS, 01=VSH1 (toward black), 10=VSL (toward white).
+ *
+ * Shape: both rows share a synchronized inversion flash — group 0 =
+ * (white 8, black 8, white 8, black 8) x2 = 64 frames — which is what
+ * actually erases ghost; then group 1 sets the target hard for 20 frames
+ * (the old LUT set whites for only 4 frames — the "grayish white" defect);
+ * group 2 discharges at VSS. Per update: black row nets +20 black frames,
+ * white row +20 white — balanced across the black<->white alternation of
+ * real content, VCOM stays DC throughout.
  */
-static const uint8_t lut_4gray_gc[105] = {
-	0x2A, 0x06, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 1 */
-	0x28, 0x06, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 2 */
-	0x20, 0x06, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 3 */
-	0x14, 0x06, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 4 */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 5 */
-	0x00, 0x02, 0x02, 0x0A, 0x00, 0x00, 0x00, 0x08, 0x08, 0x02, /* 6 */
-	0x00, 0x02, 0x02, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 7 */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 8 */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 9 */
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 10 */
-	0x22, 0x22, 0x22, 0x22, 0x22,                               /* gate */
+static const uint8_t lut_gc_mode2[105] = {
+	/* VS: 10 group-bytes per row, 4 phases (2 bits) per byte     */
+	0x99, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L0 black: flash, set VSH1 */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L1 unused */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L2 unused */
+	0x99, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L3 white: flash, set VSL */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L4 VCOM: DC */
+	/* TP/RP: {tpA, tpB, tpC, tpD, repeat} per group              */
+	0x08, 0x08, 0x08, 0x08, 0x01,                                /* G0: flash x2 = 64 frames */
+	0x14, 0x00, 0x00, 0x00, 0x00,                                /* G1: 20-frame target set  */
+	0x02, 0x00, 0x00, 0x00, 0x00,                                /* G2: 2-frame VSS settle   */
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	/* Frame rate: one nibble per group; 0x2 = the old LUT's proven rate */
+	0x22, 0x22, 0x22, 0x22, 0x22,
 };
 #endif
 
@@ -296,13 +321,14 @@ static void custom_ssd16xx_mark_synced(struct custom_ssd16xx_data *data)
 	data->partial_count = 0;
 }
 
-/* Flush both planes to panel and trigger a full 4-gray refresh. Renders both
- * mono and 2-gray content correctly (mono frames have BW == RED mirrored).
+/* Write both framebuffer planes into the controller RAM (BW 0x24 + RED 0x26).
+ * For mono content the planes are mirrored; for 4-gray they carry the 2bpp
+ * split. This matches the vendor Display_Base() path, which also seeds RED as
+ * the diff baseline for subsequent partials.
  */
-static int custom_ssd16xx_do_full(const struct device *dev)
+static int custom_ssd16xx_write_planes(const struct device *dev)
 {
 	struct custom_ssd16xx_data *data = dev->data;
-	uint8_t tmp[2];
 	int32_t err;
 
 	err = custom_ssd16xx_reset_ram_ptr(dev);
@@ -310,7 +336,6 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 		return err;
 	}
 
-	/* Write MSB plane (bit1 of 2bpp) into BW RAM */
 	LOG_DBG("Writing BW plane to EPD");
 	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_BW_RAM, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
 	if (err < 0) {
@@ -322,24 +347,44 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 		return err;
 	}
 
-	/* Write LSB plane (bit0 of 2bpp) into RED RAM */
 	LOG_DBG("Writing RED plane to EPD");
-	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->red_plane, CUSTOM_SSD16XX_BUF_BYTES);
+	return custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->red_plane, CUSTOM_SSD16XX_BUF_BYTES);
+}
+
+/* Flush both planes to panel and trigger a full refresh. Renders both
+ * mono and 2-gray content correctly (mono frames have BW == RED mirrored).
+ */
+static int custom_ssd16xx_do_full(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[2];
+	int32_t err;
+
+	err = custom_ssd16xx_write_planes(dev);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Restore the full-refresh border (a preceding partial set 0x80;
+	 * leaving that active gives every later full a dark edge ring). */
+	tmp[0] = 0x01;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
 	if (err < 0) {
 		return err;
 	}
 
 #if CONFIG_LLSS_DISPLAY_USE_CUSTOM_FULL_LUT
-	LOG_DBG("Loading custom 4-gray LUT");
-	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_LUT, lut_4gray_gc, sizeof(lut_4gray_gc));
+	LOG_DBG("Loading custom mode-2 GC LUT");
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_LUT, lut_gc_mode2, sizeof(lut_gc_mode2));
 	if (err < 0) {
 		return err;
 	}
 
-	/* Display Update Control 2: 0xCF = custom LUT full refresh */
+	/* Display Update Control 2: 0xCF = custom LUT, display mode 2 */
 	tmp[0] = 0xCF;
 #else
-	/* Display Update Control 2: 0xF7 = controller OTP/integrated waveform */
+	/* Display Update Control 2: 0xF7 = load real temperature + factory OTP
+	 * GC waveform, display, power down. The ghost eraser (vendor full). */
 	tmp[0] = 0xF7;
 #endif
 	data->last_seq = tmp[0];
@@ -364,6 +409,62 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 	}
 	data->last_refresh_ms = k_uptime_get_32() - t0;
 	LOG_DBG("EPD refresh complete (%u ms)", data->last_refresh_ms);
+
+	custom_ssd16xx_mark_synced(data);
+	return 0;
+}
+
+/*
+ * Fast-full refresh: fake a hot temperature (0x1A) so 0x22=0xD7 (load OTP LUT
+ * for the *written* temp, skip the sensor read) replays a shorter factory
+ * waveform bank — the vendor's "Fast(1.5s)" mode. Fully-driven and
+ * ghost-clearing like a full, just from a hotter shelf. The next 0xF7/0xFC
+ * reload the real temperature, so the fake value doesn't leak.
+ */
+static int custom_ssd16xx_do_fast(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[1];
+	int32_t err;
+
+	err = custom_ssd16xx_write_planes(dev);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0x01; /* full-refresh border (see do_full) */
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = CONFIG_LLSS_EPD_FAST_FULL_TEMP;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_TEMP, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0xD7;
+	data->last_seq = tmp[0];
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	uint32_t t0 = k_uptime_get_32();
+
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_busy_wait(dev, CUSTOM_SSD16XX_REFRESH_TIMEOUT_MS);
+	if (err < 0) {
+		LOG_ERR("EPD fast-full refresh timed out");
+		return err;
+	}
+	data->last_refresh_ms = k_uptime_get_32() - t0;
+	LOG_DBG("EPD fast-full complete (%u ms)", data->last_refresh_ms);
 
 	custom_ssd16xx_mark_synced(data);
 	return 0;
@@ -473,6 +574,11 @@ static int custom_ssd16xx_blanking_off(const struct device *dev)
 int custom_ssd16xx_refresh_full(const struct device *dev)
 {
 	return custom_ssd16xx_do_full(dev);
+}
+
+int custom_ssd16xx_refresh_fast(const struct device *dev)
+{
+	return custom_ssd16xx_do_fast(dev);
 }
 
 int custom_ssd16xx_refresh_partial(const struct device *dev)
@@ -718,6 +824,40 @@ int custom_ssd16xx_test_fill(const struct device *dev,
 			}
 		}
 		break;
+	case CUSTOM_SSD16XX_PAT_DITHER1:
+	case CUSTOM_SSD16XX_PAT_DITHER2:
+		/* Fine checkerboard ≈ a fully dithered mid-gray field: every
+		 * source line toggles on (nearly) every gate line — worst-case
+		 * booster/source load, mimicking the dithered chess board. */
+		{
+			uint16_t shift = (pattern == CUSTOM_SSD16XX_PAT_DITHER2) ? 1u : 0u;
+
+			for (uint16_t py = 0; py < CUSTOM_SSD16XX_ROWS; py++) {
+				for (uint16_t px = 0; px < 800; px++) {
+					bool black = (((px >> shift) + (py >> shift)) & 1u) != 0u;
+
+					test_set_px(data, px, py, black ? 0u : 3u);
+				}
+			}
+		}
+		break;
+	case CUSTOM_SSD16XX_PAT_HLINES:
+	case CUSTOM_SSD16XX_PAT_VLINES:
+		/* Thin isolated lines: crisp when gate/data alignment is right,
+		 * gray/doubled/displaced when the waveform smears along an axis.
+		 * hlines exposes vertical smear, vlines horizontal. */
+		{
+			bool horiz = (pattern == CUSTOM_SSD16XX_PAT_HLINES);
+
+			for (uint16_t py = 0; py < CUSTOM_SSD16XX_ROWS; py++) {
+				for (uint16_t px = 0; px < 800; px++) {
+					bool black = ((horiz ? py : px) % 8u) == 0u;
+
+					test_set_px(data, px, py, black ? 0u : 3u);
+				}
+			}
+		}
+		break;
 	case CUSTOM_SSD16XX_PAT_GRADIENT:
 		/* 4 vertical bands at 2bpp levels 0..3. Under a mono waveform
 		 * the BW plane reads black/white/black/white — which also makes
@@ -806,6 +946,81 @@ int custom_ssd16xx_test_sequence(const struct device *dev, uint8_t seq,
 
 	/* Keep the pipeline's diff baseline consistent with what's on glass. */
 	custom_ssd16xx_mark_synced(data);
+	return 0;
+}
+
+int custom_ssd16xx_test_compare(const struct device *dev,
+				struct custom_ssd16xx_plane_cmp *out)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint64_t bw_white = 0, red_white = 0;
+
+	out->diff_bytes = 0;
+	out->first_diff = UINT32_MAX;
+	out->prev_diff_bytes = 0;
+
+	for (uint32_t i = 0; i < CUSTOM_SSD16XX_BUF_BYTES; i++) {
+		if (data->bw_plane[i] != data->red_plane[i]) {
+			out->diff_bytes++;
+			if (out->first_diff == UINT32_MAX) {
+				out->first_diff = i;
+			}
+		}
+		if (data->bw_plane[i] != data->prev_bw_plane[i]) {
+			out->prev_diff_bytes++;
+		}
+		bw_white += POPCOUNT(data->bw_plane[i]);
+		red_white += POPCOUNT(data->red_plane[i]);
+	}
+
+	uint64_t total = (uint64_t)CUSTOM_SSD16XX_BUF_BYTES * 8u;
+
+	out->bw_ink_pct = (uint32_t)(((total - bw_white) * 100u) / total);
+	out->red_ink_pct = (uint32_t)(((total - red_white) * 100u) / total);
+	return 0;
+}
+
+int custom_ssd16xx_test_reg(const struct device *dev, uint8_t cmd,
+			    const uint8_t *data, size_t len)
+{
+	return custom_ssd16xx_write_cmd(dev, cmd, len ? data : NULL, len);
+}
+
+static uint8_t test_snap_buf[CUSTOM_SSD16XX_BUF_BYTES]
+	__attribute__((section(".ext_ram.bss")));
+static bool test_snap_valid;
+
+int custom_ssd16xx_test_snap(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	memcpy(test_snap_buf, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+	test_snap_valid = true;
+	return 0;
+}
+
+int custom_ssd16xx_test_restore(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	if (!test_snap_valid) {
+		return -ENOENT;
+	}
+	memcpy(data->bw_plane, test_snap_buf, CUSTOM_SSD16XX_BUF_BYTES);
+	memcpy(data->red_plane, test_snap_buf, CUSTOM_SSD16XX_BUF_BYTES);
+	return 0;
+}
+
+int custom_ssd16xx_test_row(const struct device *dev, uint16_t row,
+			    uint8_t out[100])
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	if (row >= CUSTOM_SSD16XX_ROWS) {
+		return -EINVAL;
+	}
+	memcpy(out, &data->bw_plane[(size_t)row * CUSTOM_SSD16XX_COLS],
+	       CUSTOM_SSD16XX_COLS);
 	return 0;
 }
 

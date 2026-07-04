@@ -56,6 +56,17 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx);
  */
 void ui_auto_full_refresh(bool enable);
 
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+/**
+ * Waveform test hold (`epd hold on|off`): while active, ui_lvgl_flush()
+ * returns immediately, so server frames and device-UI repaints neither touch
+ * the panel nor overwrite the driver's plane buffers mid-experiment. Content
+ * keeps flowing upstream and catches up on the first flush after release.
+ */
+void ui_test_hold(bool hold);
+bool ui_test_hold_active(void);
+#endif
+
 /**
  * Initialise LVGL, create the main server-frame screen, start the
  * device UI on the log screen.  Call once from main() after the kernel is up.
