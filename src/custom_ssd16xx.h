@@ -34,6 +34,27 @@ int custom_ssd16xx_refresh_fast(const struct device *dev);
  */
 int custom_ssd16xx_refresh_partial(const struct device *dev);
 
+/*
+ * Retention-grade partial (~0.9s): drives only changed pixels, but to full
+ * bistable saturation (short opposite kick + 20-frame set), so the image
+ * survives power-off — unlike the fast partial's shallow OTP DU drive.
+ * Unchanged pixels are untouched: no full-screen flash, changed-area flicker
+ * only. For updates that precede deep sleep (e.g. the sleeping clock).
+ * Same preconditions/fallbacks and ghost-floor accounting as refresh_partial.
+ */
+int custom_ssd16xx_refresh_partial_deep(const struct device *dev);
+
+/*
+ * Incremental grayscale pass over an already-displayed BW page (mode-2
+ * custom LUT). The framebuffer must hold 2bpp codes: 00/11 untouched,
+ * 01 -> light gray, 10 -> dark gray (both driven from white). revert=true
+ * runs the inverse waveform returning coded pixels to white — required
+ * before the next BW update. Both passes invalidate the prev-frame shadow,
+ * so the next normal refresh self-promotes to full unless the caller
+ * restores the BW baseline (rewrite mono planes + refresh).
+ */
+int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert);
+
 /* Default automatic full-refresh floor: number of consecutive partials after
  * which custom_ssd16xx_refresh_partial() forces a full refresh to clear
  * accumulated ghosting.

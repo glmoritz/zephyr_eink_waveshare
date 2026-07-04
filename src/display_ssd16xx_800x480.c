@@ -88,6 +88,93 @@ static const uint8_t lut_gc_mode2[105] = {
 };
 #endif
 
+/*
+ * Retention-grade partial ("deep partial"), mode 2, transition-indexed:
+ * row = (old<<1)|new with BW RAM = new frame, RED RAM = previous frame —
+ * the exact plane layout do_partial already writes. Unchanged pixels
+ * (rows 00/11) are not driven at all — no flash, no flicker; changed pixels
+ * get a short opposite kick then a 20-frame saturating set, deep enough to
+ * be bistable across power-off (the OTP DU partial's shallow drive is why
+ * partial-updated pixels fade). ~40 frames, changed-area flicker only.
+ * For the deep-sleep clock path: digits update without a full-screen flash
+ * yet retain like a GC-driven image.
+ */
+static const uint8_t lut_du_deep[105] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L0 b->b: hold */
+	0x66, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L1 b->w: mini-flash, set VSL */
+	0x99, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L2 w->b: mini-flash, set VSH1 */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L3 w->w: hold */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L4 VCOM: DC */
+	/* Retention needs full-range excursions before the set (a long
+	 * monotonic push alone fades after power-off — glass-tested): two
+	 * local inversion cycles, then the same 20f set depth as the GC. */
+	0x08, 0x08, 0x08, 0x08, 0x00,                                /* G0: 2 inversion cycles  */
+	0x14, 0x00, 0x00, 0x00, 0x00,                                /* G1: 20f saturating set  */
+	0x02, 0x00, 0x00, 0x00, 0x00,                                /* G2: 2f VSS settle       */
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x22, 0x22, 0x22, 0x22, 0x22,
+};
+
+/*
+ * Incremental grayscale (crosspoint/freeink mechanism), mode 2, level-coded:
+ * runs OVER an already-displayed BW page. Pixels coded 00/11 in the planes
+ * are untouched (zero rows); code 01 is pulled from white to light gray
+ * (3 black frames), code 10 to dark gray (7). The revert LUT drives the same
+ * codes back to white (slightly over-length to clear fully) before the next
+ * BW update. Both passes leave the panel's prev-frame semantics broken, so
+ * the driver invalidates prev_valid — the next normal refresh self-promotes
+ * to full unless the caller restores the BW baseline first.
+ */
+static const uint8_t lut_gray_enhance[105] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L0: untouched */
+	/* Stable grays need the slow FR2 frames (high-FR micro-pulses sit at
+	 * the surface and relax away — glass-tested). Glass calibration at
+	 * FR2, one-way: 3f = dark gray, 7f = near black; so light=2f,
+	 * dark=4f. G0 = light row's dose, G1 = dark row's — independent. */
+	0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L1 light: BLK 1 */
+	0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L2 dark:  BLK 2 */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L3: untouched */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L4 VCOM: DC */
+	0x01, 0x00, 0x00, 0x00, 0x00,                                /* G0: light dose */
+	0x02, 0x00, 0x00, 0x00, 0x00,                                /* G1: dark dose */
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x22, 0x22, 0x22, 0x22, 0x22,
+};
+
+static const uint8_t lut_gray_revert[105] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L0: untouched */
+	/* Clearing a gray needs the same trick in reverse: kick INTO black,
+	 * then drive white long — a one-way white push leaves residue. */
+	0x20, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L1: WHT 12 + WHT 8 */
+	0x60, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L2: BLK 2, WHT 12 + WHT 8 */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L3: untouched */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* L4 VCOM: DC */
+	0x02, 0x0C, 0x00, 0x00, 0x00,                                /* G0: kick + white set */
+	0x08, 0x00, 0x00, 0x00, 0x00,                                /* G1: extra white */
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00,
+	0x22, 0x22, 0x22, 0x22, 0x22,
+};
+
 /* Fixed geometry for this 800x480 driver */
 #define CUSTOM_SSD16XX_COLS      (800U / 8U)  /* 100 bytes per row */
 #define CUSTOM_SSD16XX_ROWS      480U
@@ -596,6 +683,129 @@ int custom_ssd16xx_refresh_partial(const struct device *dev)
 	}
 
 	return custom_ssd16xx_do_partial(dev);
+}
+
+/* Load a custom LUT and run a mode-2 update (0x22=0xCF) on the RAM planes
+ * as previously written by the caller. Shared tail of the deep-partial and
+ * gray enhance/revert paths. */
+static int custom_ssd16xx_run_lut(const struct device *dev, const uint8_t *lut)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[1];
+	int32_t err;
+
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_LUT, lut, 105);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0xCF;
+	data->last_seq = tmp[0];
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	uint32_t t0 = k_uptime_get_32();
+
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_busy_wait(dev, CUSTOM_SSD16XX_REFRESH_TIMEOUT_MS);
+	if (err < 0) {
+		LOG_ERR("EPD custom-LUT update timed out");
+		return err;
+	}
+	data->last_refresh_ms = k_uptime_get_32() - t0;
+	return 0;
+}
+
+int custom_ssd16xx_refresh_partial_deep(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[2];
+	int32_t err;
+
+	/* Same preconditions as the fast partial (see refresh_partial). */
+	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
+	    (data->full_refresh_interval != 0U &&
+	     data->partial_count >= data->full_refresh_interval)) {
+		return custom_ssd16xx_do_full(dev);
+	}
+
+	/* Previous frame -> RED RAM, new frame -> BW RAM (transition index). */
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->prev_bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_BW_RAM, data->bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0x80; /* partial border */
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_run_lut(dev, lut_du_deep);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Same post-refresh RED re-sync as the fast partial. */
+	err = custom_ssd16xx_reset_ram_ptr(dev);
+	if (err < 0) {
+		return err;
+	}
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_WRITE_RED_RAM, data->bw_plane,
+				       CUSTOM_SSD16XX_BUF_BYTES);
+	if (err < 0) {
+		return err;
+	}
+
+	memcpy(data->prev_bw_plane, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+	data->partial_count++;
+	LOG_DBG("EPD deep partial complete (%u ms, %u since full)",
+		data->last_refresh_ms, data->partial_count);
+	return 0;
+}
+
+int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	int32_t err;
+
+	/* The planes hold 2bpp gray codes, not the displayed BW image: write
+	 * both to RAM and run the enhance/revert waveform over the page. */
+	err = custom_ssd16xx_write_planes(dev);
+	if (err < 0) {
+		return err;
+	}
+
+	err = custom_ssd16xx_run_lut(dev,
+				     revert ? lut_gray_revert : lut_gray_enhance);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Glass no longer matches the mono shadow: force the next normal
+	 * refresh to be a full unless the caller restores the BW baseline. */
+	data->prev_valid = false;
+	return 0;
 }
 
 int custom_ssd16xx_set_full_refresh_interval(const struct device *dev,

@@ -142,6 +142,36 @@ static int cmd_epd_partial(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_epd_dpartial(const struct shell *sh, size_t argc, char **argv)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_refresh_partial_deep(epd_dev);
+
+	k_mutex_unlock(&lvgl_mutex);
+	if (err) {
+		shell_error(sh, "deep partial failed: %d", err);
+		return err;
+	}
+	print_status(sh);
+	return 0;
+}
+
+static int cmd_epd_gray(const struct shell *sh, size_t argc, char **argv)
+{
+	bool revert = strcmp(argv[0], "revert") == 0;
+
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_refresh_gray(epd_dev, revert);
+
+	k_mutex_unlock(&lvgl_mutex);
+	if (err) {
+		shell_error(sh, "gray %s failed: %d", argv[0], err);
+		return err;
+	}
+	print_status(sh);
+	return 0;
+}
+
 static int cmd_epd_seq(const struct shell *sh, size_t argc, char **argv)
 {
 	int16_t seq, border = -1, temp = -1;
@@ -420,6 +450,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_epd,
 		      cmd_epd_fast, 1, 0),
 	SHELL_CMD_ARG(partial, NULL, "Normal partial refresh path",
 		      cmd_epd_partial, 1, 0),
+	SHELL_CMD_ARG(dpartial, NULL, "Retention-grade deep partial",
+		      cmd_epd_dpartial, 1, 0),
+	SHELL_CMD_ARG(enhance, NULL, "Gray pass over displayed BW page",
+		      cmd_epd_gray, 1, 0),
+	SHELL_CMD_ARG(revert, NULL, "Undo gray pass (back to BW)",
+		      cmd_epd_gray, 1, 0),
 	SHELL_CMD_ARG(seq, NULL,
 		      "Raw update: <hex22> [border|-] [temp|-] [both|bw|none]",
 		      cmd_epd_seq, 2, 3),
