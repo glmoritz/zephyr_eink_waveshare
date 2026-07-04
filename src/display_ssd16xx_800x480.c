@@ -219,6 +219,13 @@ struct custom_ssd16xx_data {
 	 * pre-dithered server frames, on for device-local UI. */
 	bool dither;
 
+	/* Mono write() threshold; 128 default, 64 in the gray-enhance flow. */
+	uint8_t mono_thr;
+
+	/* Gray codes are on glass (enhance ran, revert hasn't). While set, a
+	 * partial self-promotes to full; a full or revert clears it. */
+	bool in_gray;
+
 	/* Telemetry for the `epd status` shell command / refresh tuning. */
 	uint32_t last_refresh_ms;
 	uint8_t last_seq;
@@ -497,6 +504,7 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 	data->last_refresh_ms = k_uptime_get_32() - t0;
 	LOG_DBG("EPD refresh complete (%u ms)", data->last_refresh_ms);
 
+	data->in_gray = false;
 	custom_ssd16xx_mark_synced(data);
 	return 0;
 }
@@ -673,10 +681,12 @@ int custom_ssd16xx_refresh_partial(const struct device *dev)
 	struct custom_ssd16xx_data *data = dev->data;
 
 	/* Gray and partial are mutually exclusive on this panel; no previous
-	 * frame means nothing to diff against; the periodic floor clears
-	 * ghosting. Any of these falls back to a full refresh.
+	 * frame means nothing to diff against; gray codes on glass break the
+	 * diff premise; the periodic floor clears ghosting. Any of these
+	 * falls back to a full refresh.
 	 */
-	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
+	if (data->color_mode == CUSTOM_SSD16XX_GRAY2 || !data->prev_valid ||
+	    data->in_gray ||
 	    (data->full_refresh_interval != 0U &&
 	     data->partial_count >= data->full_refresh_interval)) {
 		return custom_ssd16xx_do_full(dev);
@@ -730,6 +740,7 @@ int custom_ssd16xx_refresh_partial_deep(const struct device *dev)
 
 	/* Same preconditions as the fast partial (see refresh_partial). */
 	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
+	    data->in_gray ||
 	    (data->full_refresh_interval != 0U &&
 	     data->partial_count >= data->full_refresh_interval)) {
 		return custom_ssd16xx_do_full(dev);
@@ -789,6 +800,14 @@ int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert)
 	struct custom_ssd16xx_data *data = dev->data;
 	int32_t err;
 
+	if (revert && !data->in_gray) {
+		return 0; /* nothing enhanced — no-op */
+	}
+	if (!revert && !data->prev_valid) {
+		/* Enhance rides on top of a known BW baseline. */
+		return -EINVAL;
+	}
+
 	/* The planes hold 2bpp gray codes, not the displayed BW image: write
 	 * both to RAM and run the enhance/revert waveform over the page. */
 	err = custom_ssd16xx_write_planes(dev);
@@ -802,9 +821,23 @@ int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert)
 		return err;
 	}
 
-	/* Glass no longer matches the mono shadow: force the next normal
-	 * refresh to be a full unless the caller restores the BW baseline. */
-	data->prev_valid = false;
+	if (revert) {
+		/* Coded pixels are white again == their baseline value:
+		 * restore planes so planes == glass == prev, partial-ready. */
+		memcpy(data->bw_plane, data->prev_bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+		memcpy(data->red_plane, data->prev_bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+		data->in_gray = false;
+	} else {
+		data->in_gray = true;
+	}
+	return 0;
+}
+
+int custom_ssd16xx_set_mono_threshold(const struct device *dev, uint8_t thr)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	data->mono_thr = thr;
 	return 0;
 }
 
@@ -823,11 +856,18 @@ int custom_ssd16xx_set_color_mode(const struct device *dev,
 	struct custom_ssd16xx_data *data = dev->data;
 
 	if (mode != data->color_mode) {
-		/* A mode transition resets the panel waveform state: force the
-		 * next refresh to be full by invalidating the previous frame.
+		/* A MONO<->GRAY2 transition resets the panel waveform state:
+		 * force the next refresh to be full by invalidating the
+		 * previous frame. GRAY_MARK is a render-only overlay mode —
+		 * switching through it must keep the BW baseline valid.
 		 */
+		bool gray2_crossing = (mode == CUSTOM_SSD16XX_GRAY2 ||
+				       data->color_mode == CUSTOM_SSD16XX_GRAY2);
+
 		data->color_mode = mode;
-		data->prev_valid = false;
+		if (gray2_crossing) {
+			data->prev_valid = false;
+		}
 	}
 	return 0;
 }
@@ -890,7 +930,22 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 			uint16_t py = y + row;
 			uint8_t g2;
 
-			if (mono) {
+			if (data->color_mode == CUSTOM_SSD16XX_GRAY_MARK) {
+				/* Incremental-gray marking pass: mid-tones become the
+				 * enhance LUT's codes (1 = light gray, 2 = dark gray),
+				 * extremes become 0 = untouched. Bands assume the BW
+				 * baseline was rendered with threshold 64, so every
+				 * coded pixel is currently white on glass. */
+				if (luma < 64u) {
+					g2 = 0x0u;          /* black, leave */
+				} else if (luma < 128u) {
+					g2 = 0x2u;          /* dark gray */
+				} else if (luma < 224u) {
+					g2 = 0x1u;          /* light gray */
+				} else {
+					g2 = 0x0u;          /* white, leave */
+				}
+			} else if (mono) {
 				/* 1bpp, partial-refresh capable. Arbitrary grays are
 				 * ordered-dithered DOWN to pure B/W: the shade comes from
 				 * the dot pattern, not a gray waveform, so dithered UI
@@ -902,7 +957,7 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 
 					g2 = (luma > thr) ? 0x3u : 0x0u;
 				} else {
-					g2 = (luma >= 128u) ? 0x3u : 0x0u;
+					g2 = (luma >= data->mono_thr) ? 0x3u : 0x0u;
 				}
 			} else {
 				/* GRAY2: real 4-level waveform path, full refresh only. */
@@ -1284,6 +1339,7 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 		.color_mode = CUSTOM_SSD16XX_MONO, \
 		.partial_count = 0, \
 		.full_refresh_interval = CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL, \
+		.mono_thr = 128, \
 	}; \
 	DEVICE_DT_INST_DEFINE(inst, custom_ssd16xx_init, NULL, \
 		&custom_ssd16xx_data_##inst, &custom_ssd16xx_cfg_##inst, \

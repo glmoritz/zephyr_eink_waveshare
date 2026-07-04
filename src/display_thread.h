@@ -45,6 +45,15 @@ enum ui_refresh_ctx {
 void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx);
 
 /**
+ * Screensaver flush with incremental grayscale: renders the BW baseline
+ * (threshold 64, no dither), refreshes (full for UI_CTX_SWITCH, else
+ * partial), then re-renders the frame as gray codes and runs the enhance
+ * waveform — anti-aliased digits get two real grays. Reverts any standing
+ * gray pass first, so it is safe to call every tick. Must hold lvgl_mutex.
+ */
+void ui_lvgl_flush_saver(enum ui_refresh_ctx ctx);
+
+/**
  * Enable/disable the panel's automatic full-refresh floor (the ghosting
  * backstop that force-promotes a partial to full every N partials).
  *

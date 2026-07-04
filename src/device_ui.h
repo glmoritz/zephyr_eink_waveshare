@@ -50,6 +50,11 @@ bool device_ui_is_active(void);
  */
 void device_ui_show_main(void);
 
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+/** Test hook (`epd saver`): enter the screensaver immediately. */
+void device_ui_force_saver(void);
+#endif
+
 /**
  * Called by the display thread (lvgl_mutex held) on every new server frame.
  * Resets the screensaver idle timer and counts the frame as pending

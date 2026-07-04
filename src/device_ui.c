@@ -1307,7 +1307,7 @@ static void build_saver_scr(void)
 
 	sav_date_lbl = lv_label_create(sav_scr);
 	lv_obj_set_width(sav_date_lbl, SCR_W);
-	lv_obj_set_style_text_color(sav_date_lbl, c_gray(0x66), 0);
+	lv_obj_set_style_text_color(sav_date_lbl, c_ink(), 0);
 	lv_obj_set_style_text_font(sav_date_lbl, &chicago_18, 0);
 	lv_obj_set_style_text_align(sav_date_lbl, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(sav_date_lbl, "-");
@@ -1322,7 +1322,7 @@ static void build_saver_scr(void)
 
 	sav_temp_lbl = lv_label_create(sav_scr);
 	lv_obj_set_width(sav_temp_lbl, SCR_W);
-	lv_obj_set_style_text_color(sav_temp_lbl, c_gray(0x44), 0);
+	lv_obj_set_style_text_color(sav_temp_lbl, c_ink(), 0);
 	lv_obj_set_style_text_font(sav_temp_lbl, &chicago_18, 0);
 	lv_obj_set_style_text_align(sav_temp_lbl, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(sav_temp_lbl, "");
@@ -1333,7 +1333,7 @@ static void build_saver_scr(void)
 	 * pending-frames banner owns the bottom band. */
 	sav_net_icon = lv_label_create(sav_scr);
 	lv_obj_set_width(sav_net_icon, SCR_W);
-	lv_obj_set_style_text_color(sav_net_icon, c_gray(0x44), 0);
+	lv_obj_set_style_text_color(sav_net_icon, c_ink(), 0);
 	lv_obj_set_style_text_font(sav_net_icon, &material_design_40, 0);
 	lv_obj_set_style_text_align(sav_net_icon, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(sav_net_icon, "");
@@ -1342,7 +1342,7 @@ static void build_saver_scr(void)
 
 	sav_net_lbl = lv_label_create(sav_scr);
 	lv_obj_set_width(sav_net_lbl, SCR_W);
-	lv_obj_set_style_text_color(sav_net_lbl, c_gray(0x44), 0);
+	lv_obj_set_style_text_color(sav_net_lbl, c_ink(), 0);
 	lv_obj_set_style_text_font(sav_net_lbl, &chicago_18, 0);
 	lv_obj_set_style_text_align(sav_net_lbl, LV_TEXT_ALIGN_CENTER, 0);
 	lv_label_set_text(sav_net_lbl, "");
@@ -1491,7 +1491,13 @@ static void device_ui_thread_fn(void *a, void *b, void *c)
 			ctx = switched ? UI_CTX_SWITCH : UI_CTX_UI;
 		}
 
-		ui_lvgl_flush(dither, ctx);
+		if (scr == SCR_SAVER) {
+			/* Saver flush = BW baseline + incremental gray pass:
+			 * the big digits get real gray anti-aliasing. */
+			ui_lvgl_flush_saver(ctx);
+		} else {
+			ui_lvgl_flush(dither, ctx);
+		}
 		k_mutex_unlock(&lvgl_mutex);
 	}
 }
@@ -1519,6 +1525,17 @@ void device_ui_init(lv_obj_t *main_scr)
 	saver_mark_activity();   /* start the idle timer from boot, not from 0 */
 	lv_screen_load(main_scr_ref);
 }
+
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+void device_ui_force_saver(void)
+{
+	/* Test hook (`epd saver`): enter the screensaver immediately instead
+	 * of waiting out SAVER_IDLE_TIMEOUT_S. Mirrors the idle-fallback path. */
+	ui_auto_full_refresh(false);
+	atomic_set(&active_scr, SCR_SAVER);
+	signal_render();
+}
+#endif
 
 void device_ui_show_main(void)
 {

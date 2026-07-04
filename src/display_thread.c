@@ -274,6 +274,51 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 #endif
 }
 
+void ui_lvgl_flush_saver(enum ui_refresh_ctx ctx)
+{
+#if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+	const struct device *disp = DEVICE_DT_GET(DISPLAY_NODE);
+
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+	if (ui_test_hold_active()) {
+		return;
+	}
+#endif
+	if (!device_is_ready(disp)) {
+		return;
+	}
+
+	/* Pass 1 — BW baseline. Undo any standing gray pass first (coded
+	 * pixels return to white, planes restored to the baseline), then
+	 * render with threshold 64 so every mid-tone pixel that pass 2 will
+	 * code as gray starts out white — the enhance LUT drives from white. */
+	custom_ssd16xx_refresh_gray(disp, true);
+	custom_ssd16xx_set_dither(disp, false);
+	custom_ssd16xx_set_mono_threshold(disp, 64);
+	custom_ssd16xx_set_color_mode(disp, CUSTOM_SSD16XX_MONO);
+	lv_task_handler();
+
+	if (ctx == UI_CTX_SWITCH) {
+		custom_ssd16xx_refresh_full(disp);
+	} else {
+		custom_ssd16xx_refresh_partial(disp);
+	}
+
+	/* Pass 2 — re-render the same frame as gray codes and run the
+	 * incremental enhance: anti-aliased digit edges and gray fills become
+	 * two real grays instead of threshold casualties. */
+	custom_ssd16xx_set_color_mode(disp, CUSTOM_SSD16XX_GRAY_MARK);
+	lv_obj_invalidate(lv_screen_active());
+	lv_refr_now(NULL);
+	custom_ssd16xx_refresh_gray(disp, false);
+
+	custom_ssd16xx_set_color_mode(disp, CUSTOM_SSD16XX_MONO);
+	custom_ssd16xx_set_mono_threshold(disp, 128);
+#else
+	ui_lvgl_flush(true, ctx);
+#endif
+}
+
 void ui_auto_full_refresh(bool enable)
 {
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)

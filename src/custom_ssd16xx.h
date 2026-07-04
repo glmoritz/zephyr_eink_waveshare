@@ -12,6 +12,10 @@
 enum custom_ssd16xx_color_mode {
 	CUSTOM_SSD16XX_MONO = 0, /* 1bpp, partial-refresh capable */
 	CUSTOM_SSD16XX_GRAY2,    /* 2bpp 4-gray, full refresh only */
+	/* Render-only overlay mode for the incremental-gray pass: L8 mid-tones
+	 * become gray codes (light/dark), extremes become 00 (untouched). Does
+	 * not disturb the prev-frame shadow — pair with refresh_gray(). */
+	CUSTOM_SSD16XX_GRAY_MARK,
 };
 
 /* Full GC refresh (~2s). Renders both mono and 2-gray content correctly and
@@ -46,14 +50,23 @@ int custom_ssd16xx_refresh_partial_deep(const struct device *dev);
 
 /*
  * Incremental grayscale pass over an already-displayed BW page (mode-2
- * custom LUT). The framebuffer must hold 2bpp codes: 00/11 untouched,
- * 01 -> light gray, 10 -> dark gray (both driven from white). revert=true
- * runs the inverse waveform returning coded pixels to white — required
- * before the next BW update. Both passes invalidate the prev-frame shadow,
- * so the next normal refresh self-promotes to full unless the caller
- * restores the BW baseline (rewrite mono planes + refresh).
+ * custom LUT). The framebuffer must hold 2bpp codes (see GRAY_MARK): 00/11
+ * untouched, 01 -> light gray, 10 -> dark gray (both driven from white, so
+ * the BW baseline must have rendered those pixels white — threshold 64).
+ *
+ * enhance (revert=false): requires a valid prev shadow (the BW baseline);
+ * marks the panel as gray-enhanced. While enhanced, a partial self-promotes
+ * to full and a full clears the state (its waveform is blind to history).
+ *
+ * revert=true: drives coded pixels back to white and RESTORES the planes
+ * from the prev shadow, leaving planes == glass == baseline, partial-ready.
+ * No-op when not enhanced.
  */
 int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert);
+
+/* Mono write() threshold (default 128). The incremental-gray flow renders
+ * its BW baseline with 64 so every mid-tone pixel starts white. */
+int custom_ssd16xx_set_mono_threshold(const struct device *dev, uint8_t thr);
 
 /* Default automatic full-refresh floor: number of consecutive partials after
  * which custom_ssd16xx_refresh_partial() forces a full refresh to clear

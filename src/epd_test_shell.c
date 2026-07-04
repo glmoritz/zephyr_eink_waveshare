@@ -29,6 +29,7 @@
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
 
 #include "custom_ssd16xx.h"
+#include "device_ui.h"
 #include "display_thread.h"
 
 static const struct device *const epd_dev =
@@ -221,6 +222,13 @@ static int cmd_epd_seq(const struct shell *sh, size_t argc, char **argv)
 static int cmd_epd_status(const struct shell *sh, size_t argc, char **argv)
 {
 	print_status(sh);
+	return 0;
+}
+
+static int cmd_epd_saver(const struct shell *sh, size_t argc, char **argv)
+{
+	device_ui_force_saver();
+	shell_print(sh, "screensaver forced (any key returns to main)");
 	return 0;
 }
 
@@ -472,6 +480,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_epd,
 		      cmd_epd_dump, 2, 1),
 	SHELL_CMD_ARG(hold, NULL, "Freeze normal pipeline panel access: on|off",
 		      cmd_epd_hold, 2, 0),
+	SHELL_CMD_ARG(saver, NULL, "Force the screensaver on (test hook)",
+		      cmd_epd_saver, 1, 0),
 	SHELL_CMD_ARG(gauntlet, NULL,
 		      "Ghost gauntlet: baseline + N digits/white partial cycles (default 10)",
 		      cmd_epd_gauntlet, 1, 1),
