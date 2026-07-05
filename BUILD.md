@@ -13,6 +13,19 @@ All commands below assume you are inside the dev container shell, with the works
 
 ---
 
+## Optional font tooling
+
+Material Symbols regeneration is intentionally kept out of the base Zephyr container. When you need it, install the extra tooling from the project itself:
+
+```sh
+cd /workspace/projects/hello_eink
+./scripts/install_font_tools.sh
+```
+
+That script installs `node`, `npm`, and global `lv_font_conv` only if they are missing, then downloads the Material Symbols Rounded font into `/workspace/tools/fonts/`.
+
+---
+
 ## ESP32-S3 (hardware)
 
 ### Build

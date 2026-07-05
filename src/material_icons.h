@@ -39,6 +39,7 @@ extern const lv_font_t material_design_120;
 #define ICON_APP_REGISTER "\xEE\xBD\x80"
 #define ICON_LOCK_CLOCK   "\xEE\xBD\x97"
 #define ICON_MONITOR      "\xEE\xBD\x9B"
+#define ICON_TERMINAL     "\xEE\xAE\x8E"
 #define ICON_PENDING      "\xEF\x86\xBB"
 #define ICON_NOTIFICATION "\xEE\x9F\xB4"
 

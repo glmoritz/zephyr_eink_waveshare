@@ -178,21 +178,15 @@ config LLSS_PATTERN_TEST
 	  keep disabled for normal operation.
 
 config LLSS_NETMEM_DEBUG
-	bool "Periodic network/heap resource telemetry (temporary debug)"
+	bool "On-demand network/heap resource telemetry (temporary debug)"
 	default n
 	help
-	  Spawn a low-priority thread that periodically prints a single greppable
-	  "NETMEM" line over the console: net_pkt RX/TX slab free, net_buf RX/TX
-	  data pool avail/max, and (on ESP32) the IDF internal + PSRAM heap free.
-	  Used to chase the slow net-buffer/heap leak that panics the device after
-	  hours (esp32_wifi "unable to allocate net buffer"). Requires
-	  CONFIG_NET_BUF_POOL_USAGE=y for the avail counters. Debug aid; keep
-	  disabled for normal operation.
-
-config LLSS_NETMEM_DEBUG_INTERVAL_MS
-	int "NETMEM telemetry print interval in milliseconds"
-	default 30000
-	depends on LLSS_NETMEM_DEBUG
+	  Register shell commands that print a single greppable "NETMEM" snapshot
+	  on demand: net_pkt RX/TX slab free, net_buf RX/TX data pool avail/max,
+	  and the system heap free/alloc/max. Used to chase the slow net-buffer /
+	  heap leak without adding periodic console noise. Also registers
+	  convenience commands for one-shot thread analyzer output when that
+	  subsystem is enabled. Debug aid; keep disabled for normal operation.
 
 config LLSS_PKT_LIFETIME
 	bool "Trace alloc/free lifetime of the leaking net_pkt types (temporary debug)"

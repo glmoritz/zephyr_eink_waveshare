@@ -154,7 +154,7 @@ static void main_status_build_locked(void)
 	main_status_icon = lv_label_create(box);
 	lv_obj_set_style_text_font(main_status_icon, &material_design_120, 0);
 	lv_obj_set_style_text_color(main_status_icon, lv_color_black(), 0);
-	lv_label_set_text(main_status_icon, ICON_NOTIFICATION);
+	lv_label_set_text(main_status_icon, ICON_TERMINAL);
 	lv_obj_align(main_status_icon, LV_ALIGN_TOP_MID, 0, 18);
 
 	main_status_title = lv_label_create(box);
