@@ -1,0 +1,984 @@
+[11:22:24.450] ar[19D[J[1;31m[1;31m--- 20 messages dropped ---
+[11:22:24.451] [0m[m[00:00:00.064,000] [1;31m<err> gpio_mcp230xx: i2c_write failed![0m
+[11:22:24.451] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;31m[1;31m--- 26 messages dropped ---
+[11:22:27.848] [0m[m[00:00:00.064,000] [1;31m<err> gpio_mcp23xxx: Failed to enable mirrored IRQ pins: -14[0m
+[11:22:27.849] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.098,000] [1;31m<err> gpio_keys: mcp23017@20 device not ready[0m
+[11:22:27.866] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.098,000] [0m<inf> esp32_aes: ESP32 AES hardware accelerator initialized[0m
+[11:22:27.882] [1;32muart:~$ [m^[[1;32muart:~a[23D[J*** Booting Zephyr OS build v4.4.0-2951-gfbfc5f19636d ***
+[11:22:27.898] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.114,000] [0m<inf> fs_nvs: 8 Sectors of 4096 bytes[0m
+[11:22:27.914] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.114,000] [0m<inf> fs_nvs: alloc wra: 6, f98[0m
+[11:22:27.930] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.114,000] [0m<inf> fs_nvs: data wra: 6, 87c[0m
+[11:22:27.946] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.174,000] [0m<inf> llss_storage: LLSS storage loaded from NVS. device_id=dev_7380c1e5ca58[0m
+[11:22:27.962] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.174,000] [0m<inf> llss: Stored device_id: dev_7380c1e5ca58[0m
+[11:22:27.979] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.174,000] [0m<inf> llss: Hardware ID: 9c139eb13dd8[0m
+[11:22:27.995] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.175,000] [0m<inf> llss_client: LLSS client ready: host=eink.tutu.eng.br port=9608 base=/api[0m
+[11:22:28.011] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:00.175,000] [0m<inf> shtc3: SHTC3 backend ready[0m
+[11:22:28.027] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:01.644,000] [0m<inf> main: === LLSS e-Ink Client v0.1.0 ===[0m
+[11:22:28.043] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:03.919,000] [0m<inf> wifi_prov: Stored creds SSID=tutu, trying STA...[0m
+[11:22:28.059] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:03.919,000] [0m<inf> llss: WiFi connecting: tutu[0m
+[11:22:28.075] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:07.683,000] [0m<inf> net_dhcpv4: Received: 192.168.213.15[0m
+[11:22:30.520] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:07.683,000] [0m<inf> wifi_prov: Got IPv4: 192.168.213.15[0m
+[11:22:30.536] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:07.684,000] [0m<inf> wifi_prov: WiFi STA connected: tutu[0m
+[11:22:30.552] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:07.684,000] [0m<inf> wifi_prov: Waiting for first IP (v4 or v6) up to 25 s...[0m
+[11:22:30.568] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:07.684,000] [0m<inf> wifi_prov: Got v4 — waiting up to 5 s for the other family[0m
+[11:22:30.585] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:12.684,000] [0m<inf> wifi_prov: DNS server [0]: 192.168.213.1 (source: DHCP)[0m
+[11:22:35.521] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:12.684,000] [0m<inf> llss: WiFi connected: 192.168.213.15[0m
+[11:22:35.775] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:13.694,000] [0m<inf> ntp_sync: NTP synced: 2026-06-18 14:22:35 UTC[0m
+[11:22:36.552] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:14.705,000] [0m<inf> llss: Token refreshed — polling[0m
+[11:22:37.591] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:16.727,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_98d79af9151e?raw=true reuse=1 total=452ms first_body=351ms tail=101ms max_gap=22ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:22:39.566] [1;32muart:~$ [m^[[1;32muart:~a[23D[JDIAG fetch: write_buf=0ms http_fetch=452ms rc=0 png_len=48000
+[11:22:39.582] [1;32muart:~$ [m^[[1;32muart:~a[23D[JDIAG submit: 0ms drc=0
+[11:22:39.597] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:00:16.736,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:22:39.614] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=30s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:22:53.013] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=60s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:23:23.014] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:01:00.181,000] [0m<inf> shtc3: SHTC3: temperature=23.54 C humidity=41.25 %[0m
+[11:23:23.030] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=90s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:23:53.014] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=120s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:24:23.015] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:02:00.184,000] [0m<inf> shtc3: SHTC3: temperature=23.67 C humidity=41.60 %[0m
+[11:24:23.031] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=150s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:24:53.015] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=180s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:25:23.016] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:03:00.187,000] [0m<inf> shtc3: SHTC3: temperature=23.67 C humidity=41.15 %[0m
+[11:25:23.032] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=210s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:25:53.016] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=240s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:26:23.016] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:04:00.190,000] [0m<inf> shtc3: SHTC3: temperature=23.98 C humidity=41.68 %[0m
+[11:26:23.033] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=270s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:26:53.017] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=300s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23396
+[11:27:22.022] [1;32muart:~$ [m^[[1;32muart:~a[23D[JThread analyze:
+[11:27:22.038] [1;32muart:~$ [m^[[1;32muart:~a[23D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:27:22.054] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 865494
+[11:27:22.070] [1;32muart:~$ [m^[[1;32muart:~a[23D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:27:22.086] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 278268
+[11:27:22.102] [1;32muart:~$ [m^[[1;32muart:~a[23D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:27:22.118] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 1417609
+[11:27:22.134] [1;32muart:~$ [m^[[1;32muart:~a[23D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:27:22.150] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 282599
+[11:27:22.166] [1;32muart:~$ [m^[[1;32muart:~a[23D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:27:22.182] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 368311494
+[11:27:22.198] [1;32muart:~$ [m^[[1;32muart:~a[23D[J input               : STACK: unused 688 usage 336 / 1024 (32 %); CPU: 0 %
+[11:27:22.214] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 3379
+[11:27:22.231] [1;32muart:~$ [m^[[1;32muart:~a[23D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:27:22.247] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 117401126
+[11:27:22.263] [1;32muart:~$ [m^[[1;32muart:~a[23D[J device_ui_thread    : STACK: unused 7584 usage 608 / 8192 (7 %); CPU: 0 %
+[11:27:22.279] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 205980
+[11:27:22.295] [1;32muart:~$ [m^[[1;32muart:~a[23D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:27:22.311] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 82169
+[11:27:22.327] [1;32muart:~$ [m^[[1;32muart:~a[23D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:27:22.343] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 1051589
+[11:27:22.359] [1;32muart:~$ [m^[[1;32muart:~a[23D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:27:22.375] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 79416978
+[11:27:22.391] [1;32muart:~$ [m^[[1;32muart:~a[23D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:27:22.407] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 258563
+[11:27:22.423] [1;32muart:~$ [m^[[1;32muart:~a[23D[J tcp_work            : STACK: unused 1728 usage 320 / 2048 (15 %); CPU: 0 %
+[11:27:22.439] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 2072
+[11:27:22.455] [1;32muart:~$ [m^[[1;32muart:~a[23D[J shell_uart          : STACK: unused 2816 usage 1280 / 4096 (31 %); CPU: 0 %
+[11:27:22.471] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 4886234
+[11:27:22.487] [1;32muart:~$ [m^[[1;32muart:~a[23D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:27:22.503] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 694629460
+[11:27:22.519] [1;32muart:~$ [m^[[1;32muart:~a[23D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:27:22.535] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 8895838
+[11:27:22.551] [1;32muart:~$ [m^[[1;32muart:~a[23D[J esp_timer           : STACK: unused 3648 usage 448 / 4096 (10 %); CPU: 0 %
+[11:27:22.567] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 30348033
+[11:27:22.583] [1;32muart:~$ [m^[[1;32muart:~a[23D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:27:22.599] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 780292
+[11:27:22.615] [1;32muart:~$ [m^[[1;32muart:~a[23D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 97 %
+[11:27:22.631] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 70397664446
+[11:27:22.647] [1;32muart:~$ [m^[[1;32muart:~a[23D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:27:22.663] [1;32muart:~$ [m^[[1;32muart:~a[23D[J                     : Total CPU cycles used: 0
+[11:27:22.679] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:00.192,000] [0m<inf> shtc3: SHTC3: temperature=23.92 C humidity=40.77 %[0m
+[11:27:22.695] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:08.911,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:31.750] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:08.911,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:31.766] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:14.006,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:36.845] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:14.006,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:36.861] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:19.104,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:41.944] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:19.104,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:41.960] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:24.217,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:47.057] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:24.217,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:47.073] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:29.327,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:52.167] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:29.327,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:52.182] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:29.327,000] [1;33m<wrn> llss: Server unreachable x5 — soft reset (session + DNS)[0m
+[11:27:52.199] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:29.328,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:27:52.215] [1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=330s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:27:52.231] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:34.489,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:27:57.329] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:34.489,000] [1;31m<err> llss: Poll error 502[0m
+[11:27:57.345] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:39.603,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:02.443] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:39.603,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:02.459] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:44.706,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:07.546] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:44.708,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:07.562] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:49.824,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:12.665] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:49.825,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:12.680] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:54.934,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:17.774] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:54.934,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:17.790] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:54.934,000] [1;33m<wrn> llss: Server unreachable x10 — soft reset (session + DNS)[0m
+[11:28:17.806] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:05:54.942,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:28:17.822] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:00.060,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:22.900] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:00.060,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:22.916] [1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=360s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:28:22.933] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:00.195,000] [0m<inf> shtc3: SHTC3: temperature=23.98 C humidity=39.43 %[0m
+[11:28:22.949] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:05.162,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:28.002] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:05.162,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:28.018] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:10.272,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:33.112] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:10.272,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:33.128] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:15.376,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:38.216] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:15.376,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:38.232] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:20.487,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:43.327] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:20.487,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:43.343] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:20.487,000] [1;33m<wrn> llss: Server unreachable x15 — soft reset (session + DNS)[0m
+[11:28:43.360] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:20.494,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:28:43.376] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:25.612,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:48.452] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:25.612,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:48.468] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=390s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:28:53.019] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:30.716,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:53.035] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:30.716,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:53.051] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:35.821,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:28:58.662] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:35.821,000] [1;31m<err> llss: Poll error 502[0m
+[11:28:58.678] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:40.947,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:03.787] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:40.947,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:03.804] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:46.069,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:08.909] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:46.069,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:08.925] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:46.069,000] [1;33m<wrn> llss: Server unreachable x20 — soft reset (session + DNS)[0m
+[11:29:08.942] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:46.070,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:29:08.958] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:51.191,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:14.031] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:51.191,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:14.047] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:56.303,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:19.144] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:06:56.303,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:19.160] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=420s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:29:23.019] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:00.198,000] [0m<inf> shtc3: SHTC3: temperature=23.92 C humidity=40.01 %[0m
+[11:29:23.035] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:01.403,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:24.243] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:01.403,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:24.259] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:06.505,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:29.346] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:06.505,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:29.362] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:11.612,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:34.453] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:11.612,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:34.468] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:11.612,000] [1;33m<wrn> llss: Server unreachable x25 — soft reset (session + DNS)[0m
+[11:29:34.485] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:11.616,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:29:34.501] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:16.741,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:39.582] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:16.741,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:39.598] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:21.852,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:44.692] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:21.852,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:44.708] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:26.971,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:49.811] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:26.971,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:49.827] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[JNETMEM up=450s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:29:53.020] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:32.090,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:29:54.931] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:32.090,000] [1;31m<err> llss: Poll error 502[0m
+[11:29:54.947] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:37.201,000] [1;31m<err> llss_client: device state HTTP 502[0m
+[11:30:00.043] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:37.202,000] [1;31m<err> llss: Poll error 502[0m
+[11:30:00.059] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:37.202,000] [1;33m<wrn> llss: Server unreachable x30 — soft reset (session + DNS)[0m
+[11:30:00.075] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[00:07:37.203,000] [1;33m<wrn> llss_client: DNS resolver reset (1 server)[0m
+[11:30:00.091] [1;32muart:~$ [m^[[1;32muart:~a[23D[J[1;32muart:~$ [m^[[1;32muart:~a[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[1D[J[8D[JNETMEM up=480s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:30:23.020] [1;32muart:~$ [m[8D[J[00:08:00.201,000] [0m<inf> shtc3: SHTC3: temperature=23.92 C humidity=40.08 %[0m
+[11:30:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=510s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:30:53.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=540s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:31:23.021] [1;32muart:~$ [m[8D[J[00:09:00.204,000] [0m<inf> shtc3: SHTC3: temperature=24.08 C humidity=39.38 %[0m
+[11:31:23.022] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=570s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:31:53.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 1
+[11:32:19.460] Injected PRESS on 1
+[11:32:19.471] [1;32muart:~$ [m[8D[J[00:09:57.620,000] [0m<inf> llss: Button: BTN_1 PRESS[0m
+[11:32:20.893] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_f0f013029843' poll_after=5000
+[11:32:20.895] [1;32muart:~$ [m[8D[J[00:09:58.555,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_f0f013029843?raw=true reuse=1 total=384ms first_body=285ms tail=99ms max_gap=35ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:32:20.896] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=384ms rc=0 png_len=48000
+[11:32:20.898] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:32:20.898] [1;32muart:~$ [m[8D[J[00:09:58.560,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:32:20.899] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=600s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23396
+[11:32:22.026] [1;32muart:~$ [m[8D[JThread analyze:
+[11:32:22.027] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:32:22.028] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1510988
+[11:32:22.028] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:32:22.029] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 565890
+[11:32:22.030] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:32:22.030] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:32:22.031] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:32:22.032] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 569297
+[11:32:22.032] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:32:22.033] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 935243008
+[11:32:22.034] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:32:22.035] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 32890
+[11:32:22.035] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:32:22.036] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 258895300
+[11:32:22.037] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 7584 usage 608 / 8192 (7 %); CPU: 0 %
+[11:32:22.037] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 377268
+[11:32:22.038] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:32:22.039] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:32:22.039] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:32:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:32:22.041] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:32:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 217971755
+[11:32:22.042] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:32:22.043] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 369059
+[11:32:22.044] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1680 usage 368 / 2048 (17 %); CPU: 0 %
+[11:32:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1116476
+[11:32:22.045] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:32:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 17058780
+[11:32:22.047] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:32:22.049] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1344214352
+[11:32:22.050] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:32:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 17923023
+[11:32:22.051] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3616 usage 480 / 4096 (11 %); CPU: 0 %
+[11:32:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 59587085
+[11:32:22.053] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:32:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2325726
+[11:32:22.055] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 97 %
+[11:32:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 140824525107
+[11:32:22.056] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:32:22.057] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:32:22.057] [1;32muart:~$ [m[8D[J[00:10:00.207,000] [0m<inf> shtc3: SHTC3: temperature=24.01 C humidity=39.07 %[0m
+[11:32:22.058] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 4
+[11:32:30.680] Injected PRESS on 4
+[11:32:30.697] [1;32muart:~$ [m[8D[J[00:10:08.840,000] [0m<inf> llss: Button: BTN_4 PRESS[0m
+[11:32:31.751] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_eb1cf19fef0d' poll_after=5000
+[11:32:31.752] [1;32muart:~$ [m[8D[J[00:10:09.412,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_eb1cf19fef0d?raw=true reuse=1 total=386ms first_body=288ms tail=98ms max_gap=30ms frag_count=7 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:32:31.754] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=386ms rc=0 png_len=48000
+[11:32:31.755] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:32:31.755] [1;32muart:~$ [m[8D[J[00:10:09.417,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:32:31.756] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=630s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23616
+[11:32:53.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=660s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23616
+[11:33:23.020] [1;32muart:~$ [m[8D[J[00:11:00.210,000] [0m<inf> shtc3: SHTC3: temperature=23.98 C humidity=38.90 %[0m
+[11:33:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=690s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23616
+[11:33:53.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=720s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23616
+[11:34:23.020] [1;32muart:~$ [m[8D[J[00:12:00.213,000] [0m<inf> shtc3: SHTC3: temperature=23.74 C humidity=38.71 %[0m
+[11:34:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=750s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23616
+[11:34:53.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 4
+[11:34:58.077] Injected PRESS on 4
+[11:34:58.088] [1;32muart:~$ [m[8D[J[00:12:36.240,000] [0m<inf> llss: Button: BTN_4 PRESS[0m
+[11:34:59.203] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_10f537b3e2f0' poll_after=5000
+[11:34:59.204] [1;32muart:~$ [m[8D[J[00:12:36.867,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_10f537b3e2f0?raw=true reuse=1 total=386ms first_body=287ms tail=99ms max_gap=28ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:34:59.206] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=386ms rc=0 png_len=48000
+[11:34:59.207] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:34:59.207] [1;32muart:~$ [m[8D[J[00:12:36.873,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:34:59.208] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 1
+[11:35:03.348] Injected PRESS on 1
+[11:35:03.359] [1;32muart:~$ [m[8D[J[00:12:41.511,000] [0m<inf> llss: Button: BTN_1 PRESS[0m
+[11:35:04.349] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_4ed4bdea92cc' poll_after=5000
+[11:35:05.864] [1;32muart:~$ [m[8D[J[00:12:43.527,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_4ed4bdea92cc?raw=true reuse=1 total=584ms first_body=450ms tail=134ms max_gap=31ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:35:05.866] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=584ms rc=0 png_len=48000
+[11:35:05.867] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:35:05.867] [1;32muart:~$ [m[8D[J[00:12:43.536,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:35:05.868] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=780s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:35:23.020] [1;32muart:~$ [m[8D[J[00:13:00.216,000] [0m<inf> shtc3: SHTC3: temperature=23.79 C humidity=41.66 %[0m
+[11:35:23.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 2[11D[JNETMEM up=810s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:35:53.019] [1;32muart:~$ [mb 2[11D[J[1;32muart:~$ [mb 2
+[11:36:10.615] Injected PRESS on 2
+[11:36:10.630] [1;32muart:~$ [m[8D[J[00:13:48.779,000] [0m<inf> llss: Button: BTN_2 PRESS[0m
+[11:36:11.704] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_5a8a1ab8ddf1' poll_after=5000
+[11:36:11.705] [1;32muart:~$ [m[8D[J[00:13:49.370,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_5a8a1ab8ddf1?raw=true reuse=1 total=391ms first_body=290ms tail=101ms max_gap=22ms frag_count=9 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:36:11.707] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=391ms rc=0 png_len=48000
+[11:36:11.708] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:36:11.708] [1;32muart:~$ [m[8D[J[00:13:49.376,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:36:11.709] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 3[11D[JNETMEM up=840s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:36:23.020] [1;32muart:~$ [mb 3[11D[J[00:14:00.218,000] [0m<inf> shtc3: SHTC3: temperature=23.60 C humidity=40.53 %[0m
+[11:36:23.036] [1;32muart:~$ [mb 3[11D[J[1;32muart:~$ [mb 3
+[11:36:25.261] Injected PRESS on 3
+[11:36:25.261] [1;32muart:~$ [m[8D[J[00:14:04.544,000] [0m<inf> llss: Button: BTN_3 PRESS[0m
+[11:36:27.472] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_6469498d5d01' poll_after=5000
+[11:36:27.473] [1;32muart:~$ [m[8D[J[00:14:05.138,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_6469498d5d01?raw=true reuse=1 total=388ms first_body=255ms tail=133ms max_gap=35ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:36:27.475] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=388ms rc=0 png_len=48000
+[11:36:27.476] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:36:27.476] [1;32muart:~$ [m[8D[J[00:14:05.147,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:36:27.477] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 1
+[11:36:42.095] Injected PRESS on 1
+[11:36:42.095] [1;32muart:~$ [m[8D[J[00:14:20.726,000] [0m<inf> llss: Button: BTN_1 PRESS[0m
+[11:36:43.858] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_a599731cc9de' poll_after=5000
+[11:36:43.859] [1;32muart:~$ [m[8D[J[00:14:21.521,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_a599731cc9de?raw=true reuse=1 total=386ms first_body=258ms tail=128ms max_gap=38ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:36:43.861] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=386ms rc=0 png_len=48000
+[11:36:43.861] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:36:43.862] [1;32muart:~$ [m[8D[J[00:14:21.527,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:36:43.863] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 2
+[11:36:52.296] Injected PRESS on 2
+[11:36:52.310] [1;32muart:~$ [m[8D[JNETMEM up=870s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23836
+[11:36:53.482] [1;32muart:~$ [m[8D[J[00:14:30.459,000] [0m<inf> llss: Button: BTN_2 PRESS[0m
+[11:36:53.482] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_ab7e852887d6' poll_after=5000
+[11:36:53.483] [1;32muart:~$ [m[8D[J[00:14:31.148,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_ab7e852887d6?raw=true reuse=1 total=385ms first_body=285ms tail=100ms max_gap=31ms frag_count=9 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:36:53.485] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=385ms rc=0 png_len=48000
+[11:36:53.486] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:36:53.486] [1;32muart:~$ [m[8D[J[00:14:31.153,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:36:53.487] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 6
+[11:37:08.169] Injected PRESS on 6
+[11:37:08.169] [1;32muart:~$ [m[8D[J[00:14:46.529,000] [0m<inf> llss: Button: BTN_6 PRESS[0m
+[11:37:09.456] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_3a3011192933' poll_after=5000
+[11:37:09.457] [1;32muart:~$ [m[8D[J[00:14:47.122,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_3a3011192933?raw=true reuse=1 total=388ms first_body=288ms tail=100ms max_gap=17ms frag_count=10 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:37:09.459] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=388ms rc=0 png_len=48000
+[11:37:09.460] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:37:09.460] [1;32muart:~$ [m[8D[J[00:14:47.128,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:37:09.461] [1;32muart:~$ [m[8D[J[1;32muart:~$ [mb 1
+[11:37:13.434] Injected PRESS on 1
+[11:37:13.450] [1;32muart:~$ [m[8D[J[00:14:51.598,000] [0m<inf> llss: Button: BTN_1 PRESS[0m
+[11:37:14.789] [1;32muart:~$ [m[8D[JDIAG send_input rc=0 status=0 frame_id='frame_b9069d0f8774' poll_after=5000
+[11:37:14.789] [1;32muart:~$ [m[8D[J[00:14:52.446,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_b9069d0f8774?raw=true reuse=1 total=383ms first_body=255ms tail=128ms max_gap=37ms frag_count=9 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[11:37:14.792] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=383ms rc=0 png_len=48000
+[11:37:14.792] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[11:37:14.793] [1;32muart:~$ [m[8D[J[00:14:52.451,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[11:37:14.793] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=900s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:37:22.026] [1;32muart:~$ [m[8D[JThread analyze:
+[11:37:22.026] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:37:22.027] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2152708
+[11:37:22.027] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:37:22.028] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 839448
+[11:37:22.029] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:37:22.030] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:37:22.030] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:37:22.031] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 844263
+[11:37:22.032] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:37:22.033] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1274071908
+[11:37:22.033] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:37:22.034] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[11:37:22.035] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:37:22.035] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[11:37:22.036] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 7584 usage 608 / 8192 (7 %); CPU: 0 %
+[11:37:22.037] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 549954
+[11:37:22.037] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:37:22.038] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:37:22.039] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:37:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:37:22.040] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:37:22.041] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 380734441
+[11:37:22.042] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:37:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 481844
+[11:37:22.043] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[11:37:22.044] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[11:37:22.045] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:37:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 27878733
+[11:37:22.046] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:37:22.047] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1996943999
+[11:37:22.047] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:37:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 27024177
+[11:37:22.049] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[11:37:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 90780663
+[11:37:22.050] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:37:22.051] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3178894
+[11:37:22.052] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 97 %
+[11:37:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 210323552677
+[11:37:22.053] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:37:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:37:22.055] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:15:00.221,000] [0m<inf> shtc3: SHTC3: temperature=23.54 C humidity=38.88 %[0m
+[11:37:23.059] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=930s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:37:53.019] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=960s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23836
+[11:38:23.019] [1;32muart:~$ [m[8D[J[00:16:00.224,000] [0m<inf> shtc3: SHTC3: temperature=23.49 C humidity=39.96 %[0m
+[11:38:23.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=990s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:38:53.019] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1020s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:39:23.019] [1;32muart:~$ [m[8D[J[00:17:00.227,000] [0m<inf> shtc3: SHTC3: temperature=23.54 C humidity=38.83 %[0m
+[11:39:23.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1050s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:39:53.019] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1080s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:40:23.020] [1;32muart:~$ [m[8D[J[00:18:00.230,000] [0m<inf> shtc3: SHTC3: temperature=23.86 C humidity=38.33 %[0m
+[11:40:23.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1110s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:40:53.019] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1140s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:41:23.020] [1;32muart:~$ [m[8D[J[00:19:00.232,000] [0m<inf> shtc3: SHTC3: temperature=23.86 C humidity=39.22 %[0m
+[11:41:23.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1170s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:41:53.019] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1200s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:42:22.027] [1;32muart:~$ [m[8D[JThread analyze:
+[11:42:22.027] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:42:22.028] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2788066
+[11:42:22.028] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:42:22.029] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1112041
+[11:42:22.030] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:42:22.031] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:42:22.031] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:42:22.032] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1098719
+[11:42:22.033] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:42:22.034] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1349355719
+[11:42:22.034] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:42:22.035] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[11:42:22.036] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:42:22.036] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[11:42:22.037] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 7584 usage 608 / 8192 (7 %); CPU: 0 %
+[11:42:22.038] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 717204
+[11:42:22.038] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:42:22.039] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:42:22.040] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:42:22.041] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:42:22.041] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:42:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 440281853
+[11:42:22.043] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:42:22.044] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 575318
+[11:42:22.044] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[11:42:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[11:42:22.046] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:42:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 31323985
+[11:42:22.047] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:42:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2520925988
+[11:42:22.048] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:42:22.049] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 34795289
+[11:42:22.050] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[11:42:22.051] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 119570612
+[11:42:22.051] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:42:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3645533
+[11:42:22.053] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 97 %
+[11:42:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 281608788593
+[11:42:22.054] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:42:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:42:22.056] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:20:00.235,000] [0m<inf> shtc3: SHTC3: temperature=23.96 C humidity=39.45 %[0m
+[11:42:23.071] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1230s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:42:53.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1260s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:43:23.020] [1;32muart:~$ [m[8D[J[00:21:00.238,000] [0m<inf> shtc3: SHTC3: temperature=23.97 C humidity=40.51 %[0m
+[11:43:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1290s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:43:53.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1320s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:44:23.020] [1;32muart:~$ [m[8D[J[00:22:00.241,000] [0m<inf> shtc3: SHTC3: temperature=23.86 C humidity=38.39 %[0m
+[11:44:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1350s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23836
+[11:44:53.020] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1380s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:45:23.021] [1;32muart:~$ [m[8D[J[00:23:00.244,000] [0m<inf> shtc3: SHTC3: temperature=24.08 C humidity=38.37 %[0m
+[11:45:23.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1410s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:45:53.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1440s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:46:23.021] [1;32muart:~$ [m[8D[J[00:24:00.246,000] [0m<inf> shtc3: SHTC3: temperature=23.80 C humidity=38.85 %[0m
+[11:46:23.022] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1470s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:46:53.021] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1500s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:47:22.029] [1;32muart:~$ [m[8D[JThread analyze:
+[11:47:22.029] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:47:22.030] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3387460
+[11:47:22.031] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:47:22.031] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1371771
+[11:47:22.032] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:47:22.033] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:47:22.033] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:47:22.034] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1359842
+[11:47:22.035] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:47:22.036] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1424405922
+[11:47:22.036] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:47:22.037] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[11:47:22.038] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:47:22.039] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[11:47:22.039] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 7584 usage 608 / 8192 (7 %); CPU: 0 %
+[11:47:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 885458
+[11:47:22.041] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:47:22.041] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:47:22.042] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:47:22.043] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:47:22.043] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:47:22.044] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 499426186
+[11:47:22.045] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:47:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 677793
+[11:47:22.046] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[11:47:22.047] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[11:47:22.048] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:47:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 34795768
+[11:47:22.049] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:47:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3043494664
+[11:47:22.051] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:47:22.051] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 43912993
+[11:47:22.052] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[11:47:22.053] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 148514090
+[11:47:22.053] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:47:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4121445
+[11:47:22.055] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[11:47:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 352894544303
+[11:47:22.056] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:47:22.057] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:47:22.058] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:25:00.249,000] [0m<inf> shtc3: SHTC3: temperature=23.79 C humidity=41.22 %[0m
+[11:47:23.085] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1530s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:47:53.022] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1560s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:48:23.022] [1;32muart:~$ [m[8D[J[00:26:00.252,000] [0m<inf> shtc3: SHTC3: temperature=23.85 C humidity=38.61 %[0m
+[11:48:23.023] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1590s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:48:53.023] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1620s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:49:23.022] [1;32muart:~$ [m[8D[J[00:27:00.255,000] [0m<inf> shtc3: SHTC3: temperature=23.75 C humidity=38.22 %[0m
+[11:49:23.023] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1650s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:49:53.022] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1680s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:50:23.023] [1;32muart:~$ [m[8D[J[00:28:00.258,000] [0m<inf> shtc3: SHTC3: temperature=24.02 C humidity=38.11 %[0m
+[11:50:23.024] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1710s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:50:53.023] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1740s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:51:23.023] [1;32muart:~$ [m[8D[J[00:29:00.260,000] [0m<inf> shtc3: SHTC3: temperature=24.04 C humidity=38.43 %[0m
+[11:51:23.024] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1770s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:51:53.023] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1800s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:52:22.032] [1;32muart:~$ [m[8D[JThread analyze:
+[11:52:22.032] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:52:22.033] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3987836
+[11:52:22.034] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:52:22.035] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1641869
+[11:52:22.035] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:52:22.036] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:52:22.037] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:52:22.037] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1634785
+[11:52:22.038] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:52:22.039] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1498533014
+[11:52:22.040] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:52:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[11:52:22.041] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:52:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[11:52:22.042] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[11:52:22.043] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 524898214
+[11:52:22.044] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:52:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:52:22.045] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:52:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:52:22.047] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:52:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 560606908
+[11:52:22.048] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:52:22.049] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 773068
+[11:52:22.050] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[11:52:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[11:52:22.051] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:52:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 38340947
+[11:52:22.052] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:52:22.053] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3568378921
+[11:52:22.054] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:52:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 52369921
+[11:52:22.055] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[11:52:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 177843921
+[11:52:22.057] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:52:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4606573
+[11:52:22.058] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[11:52:22.059] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 423652091362
+[11:52:22.060] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:52:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:52:22.061] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:30:00.263,000] [0m<inf> shtc3: SHTC3: temperature=23.86 C humidity=39.08 %[0m
+[11:52:23.100] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1830s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:52:53.024] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1860s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:53:23.024] [1;32muart:~$ [m[8D[J[00:31:00.266,000] [0m<inf> shtc3: SHTC3: temperature=23.97 C humidity=39.34 %[0m
+[11:53:23.025] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1890s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:53:53.025] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1920s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:54:23.025] [1;32muart:~$ [m[8D[J[00:32:00.269,000] [0m<inf> shtc3: SHTC3: temperature=24.23 C humidity=38.48 %[0m
+[11:54:23.026] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1950s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:54:53.025] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=1980s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:55:23.026] [1;32muart:~$ [m[8D[J[00:33:00.272,000] [0m<inf> shtc3: SHTC3: temperature=24.09 C humidity=37.94 %[0m
+[11:55:23.026] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2010s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:55:53.026] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2040s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:56:23.026] [1;32muart:~$ [m[8D[J[00:34:00.274,000] [0m<inf> shtc3: SHTC3: temperature=24.17 C humidity=38.81 %[0m
+[11:56:23.027] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2070s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:56:53.027] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2100s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:57:22.036] [1;32muart:~$ [m[8D[JThread analyze:
+[11:57:22.036] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[11:57:22.037] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4598993
+[11:57:22.037] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[11:57:22.038] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1913904
+[11:57:22.039] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[11:57:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[11:57:22.040] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[11:57:22.041] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1909821
+[11:57:22.042] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[11:57:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1565510739
+[11:57:22.043] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[11:57:22.044] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[11:57:22.044] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[11:57:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[11:57:22.046] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[11:57:22.047] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1064000005
+[11:57:22.047] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[11:57:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[11:57:22.049] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[11:57:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[11:57:22.050] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[11:57:22.051] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 618880307
+[11:57:22.052] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[11:57:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 881676
+[11:57:22.053] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[11:57:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[11:57:22.054] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[11:57:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 41898674
+[11:57:22.056] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[11:57:22.057] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4079187234
+[11:57:22.057] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[11:57:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 60010047
+[11:57:22.059] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[11:57:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 206441469
+[11:57:22.060] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[11:57:22.061] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5096145
+[11:57:22.062] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[11:57:22.062] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 494420778851
+[11:57:22.063] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[11:57:22.064] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[11:57:22.064] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:35:00.277,000] [0m<inf> shtc3: SHTC3: temperature=24.04 C humidity=38.08 %[0m
+[11:57:23.114] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2130s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:57:53.027] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2160s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:58:23.027] [1;32muart:~$ [m[8D[J[00:36:00.280,000] [0m<inf> shtc3: SHTC3: temperature=24.08 C humidity=38.25 %[0m
+[11:58:23.030] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2190s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:58:53.028] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2220s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:59:23.028] [1;32muart:~$ [m[8D[J[00:37:00.283,000] [0m<inf> shtc3: SHTC3: temperature=24.04 C humidity=40.42 %[0m
+[11:59:23.029] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2250s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[11:59:53.028] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2280s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:00:23.029] [1;32muart:~$ [m[8D[J[00:38:00.286,000] [0m<inf> shtc3: SHTC3: temperature=24.10 C humidity=38.81 %[0m
+[12:00:23.030] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2310s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:00:53.029] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2340s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:01:23.029] [1;32muart:~$ [m[8D[J[00:39:00.288,000] [0m<inf> shtc3: SHTC3: temperature=24.23 C humidity=38.59 %[0m
+[12:01:23.030] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2370s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:01:53.030] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2400s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23836
+[12:02:22.039] [1;32muart:~$ [m[8D[JThread analyze:
+[12:02:22.040] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:02:22.040] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5211519
+[12:02:22.041] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:02:22.042] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2186574
+[12:02:22.042] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:02:22.043] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[12:02:22.044] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:02:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2183222
+[12:02:22.045] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:02:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1640035223
+[12:02:22.047] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:02:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:02:22.048] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:02:22.049] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:02:22.050] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:02:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1585441260
+[12:02:22.051] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:02:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:02:22.052] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:02:22.053] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[12:02:22.054] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:02:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 679804007
+[12:02:22.055] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:02:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 976480
+[12:02:22.057] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:02:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:02:22.058] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:02:22.059] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 45538783
+[12:02:22.060] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:02:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4605474331
+[12:02:22.061] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:02:22.062] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 69146849
+[12:02:22.063] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[12:02:22.063] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 235866965
+[12:02:22.064] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:02:22.065] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5583134
+[12:02:22.065] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:02:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 565178452942
+[12:02:22.067] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:02:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:02:22.068] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:40:00.291,000] [0m<inf> shtc3: SHTC3: temperature=24.10 C humidity=38.75 %[0m
+[12:02:23.129] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2430s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:02:53.030] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2460s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:03:23.031] [1;32muart:~$ [m[8D[J[00:41:00.294,000] [0m<inf> shtc3: SHTC3: temperature=24.39 C humidity=38.23 %[0m
+[12:03:23.032] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2490s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:03:53.031] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2520s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:04:23.031] [1;32muart:~$ [m[8D[J[00:42:00.297,000] [0m<inf> shtc3: SHTC3: temperature=24.36 C humidity=38.16 %[0m
+[12:04:23.032] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2550s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:04:53.032] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2580s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:05:23.032] [1;32muart:~$ [m[8D[J[00:43:00.300,000] [0m<inf> shtc3: SHTC3: temperature=24.29 C humidity=38.15 %[0m
+[12:05:23.033] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2610s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:05:53.032] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2640s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:06:23.033] [1;32muart:~$ [m[8D[J[00:44:00.303,000] [0m<inf> shtc3: SHTC3: temperature=24.04 C humidity=38.86 %[0m
+[12:06:23.034] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2670s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:06:53.033] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2700s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:07:22.044] [1;32muart:~$ [m[8D[JThread analyze:
+[12:07:22.044] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:07:22.045] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5822673
+[12:07:22.045] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:07:22.046] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2473476
+[12:07:22.047] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:07:22.048] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[12:07:22.048] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:07:22.049] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2455966
+[12:07:22.050] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:07:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1709083410
+[12:07:22.051] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:07:22.052] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:07:22.053] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:07:22.053] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:07:22.054] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:07:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2137858027
+[12:07:22.055] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:07:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:07:22.057] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:07:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[12:07:22.058] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:07:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 741324988
+[12:07:22.061] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:07:22.061] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1090311
+[12:07:22.062] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:07:22.063] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:07:22.064] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:07:22.065] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 49087466
+[12:07:22.065] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:07:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5122221158
+[12:07:22.067] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:07:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 77359758
+[12:07:22.068] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[12:07:22.069] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 264182757
+[12:07:22.070] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:07:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 6068769
+[12:07:22.071] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:07:22.072] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 635922291713
+[12:07:22.073] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:07:22.074] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:07:22.074] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:45:00.305,000] [0m<inf> shtc3: SHTC3: temperature=24.23 C humidity=38.48 %[0m
+[12:07:23.145] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2730s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:07:53.034] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2760s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:08:23.035] [1;32muart:~$ [m[8D[J[00:46:00.308,000] [0m<inf> shtc3: SHTC3: temperature=24.49 C humidity=39.07 %[0m
+[12:08:23.036] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2790s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:08:53.035] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2820s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:09:23.036] [1;32muart:~$ [m[8D[J[00:47:00.311,000] [0m<inf> shtc3: SHTC3: temperature=24.35 C humidity=38.40 %[0m
+[12:09:23.037] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2850s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:09:53.036] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2880s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:10:23.037] [1;32muart:~$ [m[8D[J[00:48:00.314,000] [0m<inf> shtc3: SHTC3: temperature=24.48 C humidity=37.98 %[0m
+[12:10:23.038] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2910s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:10:53.037] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2940s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:11:23.038] [1;32muart:~$ [m[8D[J[00:49:00.317,000] [0m<inf> shtc3: SHTC3: temperature=24.24 C humidity=37.93 %[0m
+[12:11:23.038] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=2970s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:11:53.038] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3000s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:12:22.050] [1;32muart:~$ [m[8D[JThread analyze:
+[12:12:22.050] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:12:22.050] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 6433129
+[12:12:22.051] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:12:22.051] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2765631
+[12:12:22.052] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:12:22.053] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[12:12:22.053] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:12:22.054] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2730808
+[12:12:22.055] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:12:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1780582258
+[12:12:22.056] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:12:22.057] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:12:22.058] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:12:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:12:22.059] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:12:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2683058966
+[12:12:22.061] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:12:22.061] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:12:22.062] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:12:22.063] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[12:12:22.063] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:12:22.065] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 804899039
+[12:12:22.065] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:12:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1190755
+[12:12:22.066] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:12:22.067] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:12:22.068] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:12:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 52737660
+[12:12:22.069] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:12:22.070] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 5653493612
+[12:12:22.071] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:12:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 86556091
+[12:12:22.072] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3568 usage 528 / 4096 (12 %); CPU: 0 %
+[12:12:22.073] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 293574417
+[12:12:22.073] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:12:22.074] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 6571135
+[12:12:22.075] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:12:22.076] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 706651972331
+[12:12:22.076] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:12:22.077] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:12:22.078] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:50:00.320,000] [0m<inf> shtc3: SHTC3: temperature=24.02 C humidity=39.24 %[0m
+[12:12:23.162] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3030s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:12:53.039] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3060s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:13:23.039] [1;32muart:~$ [m[8D[J[00:51:00.323,000] [0m<inf> shtc3: SHTC3: temperature=24.10 C humidity=39.69 %[0m
+[12:13:23.040] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3090s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:13:53.040] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3120s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:14:23.040] [1;32muart:~$ [m[8D[J[00:52:00.325,000] [0m<inf> shtc3: SHTC3: temperature=24.43 C humidity=38.61 %[0m
+[12:14:23.041] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3150s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:14:53.040] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3180s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:15:23.041] [1;32muart:~$ [m[8D[J[00:53:00.328,000] [0m<inf> shtc3: SHTC3: temperature=24.36 C humidity=39.22 %[0m
+[12:15:23.042] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3210s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:15:53.044] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3240s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:16:23.044] [1;32muart:~$ [m[8D[J[00:54:00.331,000] [0m<inf> shtc3: SHTC3: temperature=24.36 C humidity=39.06 %[0m
+[12:16:23.045] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3270s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:16:53.042] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3300s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:17:22.054] [1;32muart:~$ [m[8D[JThread analyze:
+[12:17:22.054] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:17:22.055] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7044662
+[12:17:22.055] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:17:22.056] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3091130
+[12:17:22.057] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:17:22.058] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[12:17:22.058] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:17:22.059] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3002168
+[12:17:22.060] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:17:22.061] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1852320221
+[12:17:22.061] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:17:22.062] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:17:22.063] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:17:22.063] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:17:22.064] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:17:22.065] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3223908380
+[12:17:22.066] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:17:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:17:22.067] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:17:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[12:17:22.068] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:17:22.069] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 866662845
+[12:17:22.070] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:17:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1295503
+[12:17:22.071] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:17:22.072] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:17:22.073] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:17:22.073] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 56311128
+[12:17:22.074] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:17:22.075] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 6166179851
+[12:17:22.076] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:17:22.076] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 95035439
+[12:17:22.077] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3536 usage 560 / 4096 (13 %); CPU: 0 %
+[12:17:22.078] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 322472379
+[12:17:22.078] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:17:22.079] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7039407
+[12:17:22.080] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:17:22.081] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 777407564115
+[12:17:22.081] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:17:22.082] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:17:22.083] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:55:00.334,000] [0m<inf> shtc3: SHTC3: temperature=24.37 C humidity=38.80 %[0m
+[12:17:23.179] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3330s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:17:53.043] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3360s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:18:23.047] [1;32muart:~$ [m[8D[J[00:56:00.337,000] [0m<inf> shtc3: SHTC3: temperature=24.71 C humidity=39.07 %[0m
+[12:18:23.049] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3390s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:18:53.044] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3420s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:19:23.044] [1;32muart:~$ [m[8D[J[00:57:00.340,000] [0m<inf> shtc3: SHTC3: temperature=24.26 C humidity=38.15 %[0m
+[12:19:23.045] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3450s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11172 alloc=21416 max=23836
+[12:19:53.045] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3480s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:20:23.046] [1;32muart:~$ [m[8D[J[00:58:00.343,000] [0m<inf> shtc3: SHTC3: temperature=24.47 C humidity=38.48 %[0m
+[12:20:23.046] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3510s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:20:53.046] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3540s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:21:23.046] [1;32muart:~$ [m[8D[J[00:59:00.346,000] [0m<inf> shtc3: SHTC3: temperature=24.48 C humidity=37.84 %[0m
+[12:21:23.047] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m
+[12:21:33.579] [1;32muart:~$ [m
+[12:21:34.283] [1;32muart:~$ [m[8D[JNETMEM up=3570s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:21:53.047] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3600s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:22:22.059] [1;32muart:~$ [m[8D[JThread analyze:
+[12:22:22.059] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:22:22.060] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7655417
+[12:22:22.061] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:22:22.061] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3417636
+[12:22:22.062] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:22:22.063] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1417609
+[12:22:22.063] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:22:22.064] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3279170
+[12:22:22.065] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:22:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1920866857
+[12:22:22.066] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:22:22.067] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:22:22.068] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:22:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:22:22.069] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:22:22.070] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3770128411
+[12:22:22.071] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:22:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:22:22.072] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:22:22.073] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3426280
+[12:22:22.073] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:22:22.074] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 930367680
+[12:22:22.075] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:22:22.076] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1406664
+[12:22:22.076] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:22:22.077] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:22:22.078] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:22:22.078] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 60055793
+[12:22:22.079] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:22:22.080] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 6678793850
+[12:22:22.080] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:22:22.081] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 103661739
+[12:22:22.082] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3536 usage 560 / 4096 (13 %); CPU: 0 %
+[12:22:22.083] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 351582436
+[12:22:22.083] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:22:22.084] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7515396
+[12:22:22.085] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:22:22.086] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 848158480133
+[12:22:22.086] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:22:22.087] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:22:22.088] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[01:00:00.349,000] [0m<inf> shtc3: SHTC3: temperature=24.53 C humidity=37.90 %[0m
+[12:22:23.198] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[01:00:07.695,000] [0m<inf> wifi_prov: WiFi STA connected: tutu[0m
+[12:22:30.542] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[01:00:14.670,000] [0m<inf> ntp_sync: NTP synced: 2026-06-18 15:22:36 UTC[0m
+[12:22:37.517] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3630s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:22:53.048] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3660s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:23:23.048] [1;32muart:~$ [m[8D[J[01:01:00.352,000] [0m<inf> shtc3: SHTC3: temperature=24.48 C humidity=38.18 %[0m
+[12:23:23.049] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3690s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:23:53.048] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3720s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:24:23.049] [1;32muart:~$ [m[8D[J[01:02:00.354,000] [0m<inf> shtc3: SHTC3: temperature=24.47 C humidity=37.45 %[0m
+[12:24:23.049] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3750s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:24:53.049] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3780s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:25:23.049] [1;32muart:~$ [m[8D[J[01:03:00.357,000] [0m<inf> shtc3: SHTC3: temperature=24.48 C humidity=36.83 %[0m
+[12:25:23.050] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3810s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:25:53.050] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3840s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:26:23.050] [1;32muart:~$ [m[8D[J[01:04:00.360,000] [0m<inf> shtc3: SHTC3: temperature=24.59 C humidity=36.40 %[0m
+[12:26:23.051] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3870s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:26:53.050] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3900s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:27:22.063] [1;32muart:~$ [m[8D[JThread analyze:
+[12:27:22.063] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:27:22.064] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 8265961
+[12:27:22.065] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:27:22.066] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3727529
+[12:27:22.066] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:27:22.067] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2753825
+[12:27:22.068] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:27:22.069] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3548515
+[12:27:22.069] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:27:22.070] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1986331221
+[12:27:22.071] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:27:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:27:22.072] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:27:22.073] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:27:22.073] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:27:22.074] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4320769099
+[12:27:22.075] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:27:22.076] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:27:22.076] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:27:22.077] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3875865
+[12:27:22.078] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:27:22.079] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 992948433
+[12:27:22.079] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:27:22.080] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1544940
+[12:27:22.081] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:27:22.081] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:27:22.082] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:27:22.083] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 63904134
+[12:27:22.083] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:27:22.084] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7194475915
+[12:27:22.085] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:27:22.086] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 112005702
+[12:27:22.086] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3536 usage 560 / 4096 (13 %); CPU: 0 %
+[12:27:22.087] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 380813808
+[12:27:22.088] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:27:22.089] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 8067512
+[12:27:22.089] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:27:22.090] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 918904280067
+[12:27:22.091] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:27:22.091] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:27:22.092] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[01:05:00.363,000] [0m<inf> shtc3: SHTC3: temperature=24.47 C humidity=36.61 %[0m
+[12:27:23.213] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3930s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:27:53.052] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3960s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:28:23.052] [1;32muart:~$ [m[8D[J[01:06:00.366,000] [0m<inf> shtc3: SHTC3: temperature=24.30 C humidity=36.00 %[0m
+[12:28:23.052] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=3990s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:28:53.052] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4020s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:29:23.052] [1;32muart:~$ [m[8D[J[01:07:00.369,000] [0m<inf> shtc3: SHTC3: temperature=24.10 C humidity=36.13 %[0m
+[12:29:23.053] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4050s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:29:53.053] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4080s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:30:23.053] [1;32muart:~$ [m[8D[J[01:08:00.372,000] [0m<inf> shtc3: SHTC3: temperature=24.24 C humidity=36.58 %[0m
+[12:30:23.054] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4110s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:30:53.054] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4140s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:31:23.054] [1;32muart:~$ [m[8D[J[01:09:00.377,000] [0m<inf> shtc3: SHTC3: temperature=24.25 C humidity=36.43 %[0m
+[12:31:23.055] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4170s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=10940 alloc=21644 max=23836
+[12:31:53.055] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4200s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:32:22.067] [1;32muart:~$ [m[8D[JThread analyze:
+[12:32:22.068] [1;32muart:~$ [m[8D[J thread_analyzer     : STACK: unused 112 usage 912 / 1024 (89 %); CPU: 0 %
+[12:32:22.068] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 8877436
+[12:32:22.069] [1;32muart:~$ [m[8D[J shtc3_thread        : STACK: unused 1360 usage 688 / 2048 (33 %); CPU: 0 %
+[12:32:22.070] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4058524
+[12:32:22.070] [1;32muart:~$ [m[8D[J ntp_thread          : STACK: unused 2480 usage 1616 / 4096 (39 %); CPU: 0 %
+[12:32:22.071] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2753825
+[12:32:22.072] [1;32muart:~$ [m[8D[J netmem_tid          : STACK: unused 640 usage 640 / 1280 (50 %); CPU: 0 %
+[12:32:22.073] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3825868
+[12:32:22.073] [1;32muart:~$ [m[8D[J llss_thread         : STACK: unused 11584 usage 4800 / 16384 (29 %); CPU: 0 %
+[12:32:22.074] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2054379778
+[12:32:22.075] [1;32muart:~$ [m[8D[J input               : STACK: unused 560 usage 464 / 1024 (45 %); CPU: 0 %
+[12:32:22.076] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 296962
+[12:32:22.076] [1;32muart:~$ [m[8D[J display_thread      : STACK: unused 8640 usage 3648 / 12288 (29 %); CPU: 0 %
+[12:32:22.077] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1532329202
+[12:32:22.078] [1;32muart:~$ [m[8D[J device_ui_thread    : STACK: unused 4496 usage 3696 / 8192 (45 %); CPU: 0 %
+[12:32:22.078] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 4846193388
+[12:32:22.079] [1;32muart:~$ [m[8D[J conn_mgr_monitor    : STACK: unused 176 usage 336 / 512 (65 %); CPU: 0 %
+[12:32:22.080] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 82169
+[12:32:22.080] [1;32muart:~$ [m[8D[J net_socket_service  : STACK: unused 3344 usage 752 / 4096 (18 %); CPU: 0 %
+[12:32:22.081] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 3875865
+[12:32:22.082] [1;32muart:~$ [m[8D[J rx_q[0]             : STACK: unused 528 usage 1520 / 2048 (74 %); CPU: 0 %
+[12:32:22.083] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1056387905
+[12:32:22.083] [1;32muart:~$ [m[8D[J net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[12:32:22.084] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1673147
+[12:32:22.085] [1;32muart:~$ [m[8D[J tcp_work            : STACK: unused 1216 usage 832 / 2048 (40 %); CPU: 0 %
+[12:32:22.086] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1356812
+[12:32:22.086] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 2752 usage 1344 / 4096 (32 %); CPU: 0 %
+[12:32:22.087] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 67464168
+[12:32:22.088] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 0 %
+[12:32:22.088] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7720151684
+[12:32:22.089] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[12:32:22.090] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 120426063
+[12:32:22.090] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3536 usage 560 / 4096 (13 %); CPU: 0 %
+[12:32:22.091] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 410410692
+[12:32:22.092] [1;32muart:~$ [m[8D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[12:32:22.093] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 8547847
+[12:32:22.093] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 98 %
+[12:32:22.094] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 989663042308
+[12:32:22.095] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[12:32:22.096] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[12:32:22.096] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[01:10:00.381,000] [0m<inf> shtc3: SHTC3: temperature=24.23 C humidity=35.16 %[0m
+[12:32:23.232] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4230s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:32:53.056] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4260s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:33:23.056] [1;32muart:~$ [m[8D[J[01:11:00.385,000] [0m<inf> shtc3: SHTC3: temperature=23.98 C humidity=35.32 %[0m
+[12:33:23.057] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4290s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:33:53.056] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4320s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:34:23.057] [1;32muart:~$ [m[8D[J[01:12:00.387,000] [0m<inf> shtc3: SHTC3: temperature=24.36 C humidity=35.10 %[0m
+[12:34:23.059] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4350s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:34:53.057] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4380s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:35:23.058] [1;32muart:~$ [m[8D[J[01:13:00.390,000] [0m<inf> shtc3: SHTC3: temperature=24.07 C humidity=35.01 %[0m
+[12:35:23.058] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4410s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:35:53.058] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=4440s pktRX=40/40 pktTX=16/16 bufRX=160/160/m110 bufTX=80/80/m5 sysheap_free=11208 alloc=21380 max=23836
+[12:36:23.059] [1;32muart:~$ [m[8D[J[01:14:00.393,000] [0m<inf> shtc3: SHTC3: temperature=24.10 C humidity=35.18 %[0m
+[12:36:23.059] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m

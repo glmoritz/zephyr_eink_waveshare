@@ -64,6 +64,10 @@ struct llss_input_response {
 	enum llss_input_result status;
 	char                   frame_id[64];
 	int32_t                poll_after_ms;
+	/* User-facing transient popup text (server "notice"). Empty when the
+	 * server sent none. The device flashes it for a couple of seconds; it is
+	 * independent of any frame and can arrive with a NO_CHANGE status. */
+	char                   notice[128];
 	char                   top_strip_id[LLSS_STRIP_ID_MAX];
 	char                   bottom_strip_id[LLSS_STRIP_ID_MAX];
 	int32_t                top_enabled_mask;    /* -1 = unspecified */

@@ -1,0 +1,51 @@
+[07:59:52.644] ped ---
+[07:59:52.644] [0m[m[00:00:00.065,000] [1;31m<err> gpio_mcp230xx: i2c_write failed![0m
+[07:59:52.645] [1;32muart:~$ [m[8D[J[00:00:00.065,000] [1;31m<err> gpio_mcp23xxx: Failed to enable mirrored IRQ pins: -14[0m
+[07:59:52.645] [1;32muart:~$ [m[8D[J[00:00:00.098,000] [1;31m<err> gpio_keys: mcp23017@20 device not ready[0m
+[07:59:52.645] [1;32muart:~$ [m[8D[J[00:00:00.098,000] [0m<inf> esp32_aes: ESP32 AES hardware accelerator initialized[0m
+[07:59:52.646] [1;32muart:~$ [m[8D[J*** Booting Zephyr OS build v4.4.0-2951-gfbfc5f19636d ***
+[07:59:52.646] [1;32muart:~$ [m[8D[J[00:00:00.114,000] [0m<inf> fs_nvs: 8 Sectors of 4096 bytes[0m
+[07:59:52.647] [1;32muart:~$ [m[8D[J[00:00:00.114,000] [0m<inf> fs_nvs: alloc wra: 7, fa0[0m
+[07:59:52.647] [1;32muart:~$ [m[8D[J[00:00:00.114,000] [0m<inf> fs_nvs: data wra: 7, 868[0m
+[07:59:52.647] [1;32muart:~$ [m[8D[J[00:00:00.178,000] [0m<inf> llss_storage: LLSS storage loaded from NVS. device_id=dev_7380c1e5ca58[0m
+[07:59:52.648] [1;32muart:~$ [m[8D[J[00:00:00.178,000] [0m<inf> llss: Stored device_id: dev_7380c1e5ca58[0m
+[07:59:52.649] [1;32muart:~$ [m[8D[J[00:00:00.178,000] [0m<inf> llss: Hardware ID: 9c139eb13dd8[0m
+[07:59:52.650] [1;32muart:~$ [m[8D[J[00:00:00.178,000] [0m<inf> llss_client: LLSS client ready: host=eink.tutu.eng.br port=9608 base=/api[0m
+[07:59:52.651] [1;32muart:~$ [m[8D[J[00:00:00.178,000] [0m<inf> shtc3: SHTC3 backend ready[0m
+[07:59:52.651] [1;32muart:~$ [m[8D[J shell_uart          : STACK: unused 3184 usage 912 / 4096 (22 %); CPU: 0 %
+[07:59:52.652] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 85751
+[07:59:52.653] [1;32muart:~$ [m[8D[J wifi                : STACK: unused 2992 usage 592 / 3584 (16 %); CPU: 2 %
+[07:59:52.654] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 647465
+[07:59:52.654] [1;32muart:~$ [m[8D[J[00:00:00.182,000] [0m<inf> shtc3: SHTC3: temperature=23.97 C humidity=40.35 %[0m
+[07:59:52.655] [1;32muart:~$ [m[8D[J sysworkq            : STACK: unused 3776 usage 320 / 4096 (7 %); CPU: 0 %
+[07:59:52.656] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1349
+[07:59:52.657] [1;32muart:~$ [m[8D[J esp_timer           : STACK: unused 3776 usage 320 / 4096 (7 %); CPU: 0 %
+[07:59:52.657] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 2738
+[07:59:52.658] [1;32muart:~$ [m[8D[J logging             : STACK: unused 704 usage 320 / 1024 (31 %); CPU: 0 %
+[07:59:52.659] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 1853
+[07:59:52.659] [1;32muart:~$ [m[8D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 26 %
+[07:59:52.660] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 7792180
+[07:59:52.661] [1;32muart:~$ [m[8D[J main                : STACK: unused 15440 usage 944 / 16384 (5 %); CPU: 43 %
+[07:59:52.662] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 12898878
+[07:59:52.662] [1;32muart:~$ [m[8D[J ISR0                : STACK: unused 1712 usage 336 / 2048 (16 %); CPU: 0 %
+[07:59:52.663] [1;32muart:~$ [m[8D[J                     : Total CPU cycles used: 0
+[07:59:52.664] [1;32muart:~$ [m[8D[J[00:00:01.648,000] [0m<inf> main: === LLSS e-Ink Client v0.1.0 ===[0m
+[07:59:52.664] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:00:03.936,000] [0m<inf> wifi_prov: Stored creds SSID=tutu, trying STA...[0m
+[07:59:54.463] [1;32muart:~$ [m[8D[J[00:00:03.937,000] [0m<inf> llss: WiFi connecting: tutu[0m
+[07:59:54.465] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:00:14.671,000] [0m<inf> net_dhcpv4: Received: 192.168.213.15[0m
+[08:00:04.797] [1;32muart:~$ [m[8D[J[00:00:14.671,000] [0m<inf> wifi_prov: Got IPv4: 192.168.213.15[0m
+[08:00:04.798] [1;32muart:~$ [m[8D[J[00:00:14.671,000] [0m<inf> wifi_prov: WiFi STA connected: tutu[0m
+[08:00:04.799] [1;32muart:~$ [m[8D[J[00:00:14.671,000] [0m<inf> wifi_prov: Waiting for first IP (v4 or v6) up to 25 s...[0m
+[08:00:04.800] [1;32muart:~$ [m[8D[J[00:00:14.671,000] [0m<inf> wifi_prov: Got v4 — waiting up to 5 s for the other family[0m
+[08:00:04.801] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:00:19.671,000] [0m<inf> wifi_prov: DNS server [0]: 192.168.213.1 (source: DHCP)[0m
+[08:00:09.799] [1;32muart:~$ [m[8D[J[00:00:19.671,000] [0m<inf> llss: WiFi connected: 192.168.213.15[0m
+[08:00:09.800] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:00:20.902,000] [0m<inf> ntp_sync: NTP synced: 2026-06-18 11:00:10 UTC[0m
+[08:00:11.264] [1;32muart:~$ [m[8D[J[00:00:21.815,000] [0m<inf> llss: Token refreshed — polling[0m
+[08:00:11.265] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[J[00:00:23.935,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_98d79af9151e?raw=true reuse=1 total=511ms first_body=411ms tail=100ms max_gap=21ms frag_count=8 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[08:00:14.064] [1;32muart:~$ [m[8D[JDIAG fetch: write_buf=0ms http_fetch=511ms rc=0 png_len=48000
+[08:00:14.064] [1;32muart:~$ [m[8D[JDIAG submit: 0ms drc=0
+[08:00:14.065] [1;32muart:~$ [m[8D[J[00:00:23.945,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[08:00:14.065] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=30s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=11208 alloc=21380 max=23396
+[08:00:20.307] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m[8D[JNETMEM up=60s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=11208 alloc=21380 max=23396
+[08:00:50.307] [1;32muart:~$ [m[8D[J[00:01:00.185,000] [0m<inf> shtc3: SHTC3: temperature=23.49 C humidity=40.52 %[0m
+[08:00:50.308] [1;32muart:~$ [m[8D[J[1;32muart:~$ [m

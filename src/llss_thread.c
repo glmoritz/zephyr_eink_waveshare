@@ -157,6 +157,7 @@ enum key_state {
 struct key_slot {
 	int32_t                   code;     /* 0 = free */
 	atomic_t                  state;
+	uint32_t                  press_t_ms;
 	struct k_work_delayable   long_work;
 };
 
@@ -195,6 +196,9 @@ static void enqueue_event(int32_t code, enum ui_evt evt)
 
 	struct button_event bev = { .btn = btn, .evt = evt };
 
+	LOG_INF("BTNTRACE enqueue code=%d evt=%d t=%u",
+		(int)code, (int)evt, k_uptime_get_32());
+
 	k_msgq_put(&btn_queue, &bev, K_NO_WAIT);
 }
 
@@ -202,8 +206,11 @@ static void long_press_handler(struct k_work *work)
 {
 	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 	struct key_slot *slot = CONTAINER_OF(dwork, struct key_slot, long_work);
+	uint32_t now = k_uptime_get_32();
 
 	/* CAS guards against a release that beat us to the IDLE transition. */
+	LOG_INF("BTNTRACE longfire code=%d dt=%u t=%u",
+		(int)slot->code, now - slot->press_t_ms, now);
 	if (atomic_cas(&slot->state, KEY_PRESSED, KEY_LONG_FIRED)) {
 		enqueue_event(slot->code, UI_EVT_LONG_PRESS);
 	}
@@ -238,20 +245,21 @@ static void on_input(struct input_event *evt, void *user_data)
 	}
 
 	if (evt->value != 0) {
+		slot->press_t_ms = k_uptime_get_32();
+		LOG_INF("BTNTRACE input press code=%d t=%u",
+			(int)evt->code, slot->press_t_ms);
 		/* Press down — arm the long-press timer.  reschedule (vs
 		 * schedule) handles a stray re-press without an intervening
 		 * release by restarting the count. */
 		atomic_set(&slot->state, KEY_PRESSED);
 		k_work_reschedule(&slot->long_work, K_MSEC(LONG_PRESS_MS));
 
-		/* Local press feedback on finger-down (not on release):
-		 * blit a pre-computed per-slot variant. Cleared on next
-		 * server frame submit. */
-		enum ui_btn btn = ui_btn_from_keycode(evt->code);
-
-		if (btn != UI_BTN_NONE) {
-			press_feedback_show(btn);
-		}
+		/* Immediate e-ink press feedback is intentionally disabled here.
+		 * Even offloaded to the display thread, the panel update itself is
+		 * a >1 s cosmetic operation that can still stall unrelated work and
+		 * distort input timing. Keep button handling semantic-first; the
+		 * next real frame refresh will naturally clear any stale overlay
+		 * state. */
 		return;
 	}
 
@@ -259,6 +267,9 @@ static void on_input(struct input_event *evt, void *user_data)
 	 * CAS owns the event.  If we win PRESSED→IDLE the work hadn't fired
 	 * yet — emit PRESS.  Otherwise it already fired LONG_PRESS and we
 	 * drop the release silently. */
+	uint32_t release_t_ms = k_uptime_get_32();
+	LOG_INF("BTNTRACE input release code=%d dt=%u t=%u",
+		(int)evt->code, release_t_ms - slot->press_t_ms, release_t_ms);
 	k_work_cancel_delayable(&slot->long_work);
 
 	if (atomic_cas(&slot->state, KEY_PRESSED, KEY_IDLE)) {
@@ -271,11 +282,18 @@ static void on_input(struct input_event *evt, void *user_data)
 INPUT_CALLBACK_DEFINE(NULL, on_input, NULL);
 
 /* =========================================================================
- * Shell — inject button events through the input subsystem
+ * Shell — inject semantic button events
  *
- * Goes through input_report_key() so the same on_input() callback runs as
- * for the physical IO-expander buttons.  Useful for bring-up before the
- * expander is wired and for reproducing protocol issues from a console.
+ * The shell command already knows whether the operator requested PRESS or
+ * LONG_PRESS, so it should not route through the physical press timing state
+ * machine. That path is intentionally tied to real input timing, display-side
+ * feedback, and long-press arbitration; using it for shell taps makes the
+ * synthetic command hostage to unrelated scheduler/panel latency.
+ *
+ * Instead, the shell path requests the same immediate press-feedback overlay,
+ * waits the nominal press duration, then enqueues the requested semantic
+ * event directly. This preserves console usefulness for protocol testing while
+ * leaving the real hardware path unchanged.
  * ========================================================================= */
 
 static int shell_btn(const struct shell *sh, size_t argc, char **argv,
@@ -301,23 +319,22 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 		return -EINVAL;
 	}
 
-	int32_t rc = input_report_key(NULL, code, 1, true, K_FOREVER);
+	uint32_t now = k_uptime_get_32();
 
-	if (rc < 0) {
-		shell_error(sh, "input_report_key press failed: %d", rc);
-		return rc;
-	}
+	LOG_INF("BTNTRACE shell press_send code=%d t=%u rc=0",
+		(int)code, now);
 
 	k_msleep(long_press ? (LONG_PRESS_MS + 100) : 50);
 
-	rc = input_report_key(NULL, code, 0, true, K_FOREVER);
-	if (rc < 0) {
-		shell_error(sh, "input_report_key release failed: %d", rc);
-		return rc;
-	}
+	LOG_INF("BTNTRACE shell release_send code=%d t=%u",
+		(int)code, k_uptime_get_32());
+	enqueue_event(code, long_press ? UI_EVT_LONG_PRESS : UI_EVT_PRESS);
+	LOG_INF("BTNTRACE shell release_done code=%d t=%u rc=0",
+		(int)code, k_uptime_get_32());
 
-	shell_print(sh, "Injected %s on %s",
-		    long_press ? "LONG_PRESS" : "PRESS", argv[1]);
+	LOG_INF("BTNTRACE shell injected kind=%s name=%s code=%d t=%u",
+		long_press ? "LONG_PRESS" : "PRESS", argv[1], (int)code,
+		k_uptime_get_32());
 	return 0;
 }
 
@@ -802,12 +819,6 @@ static enum app_state do_send_input(const struct button_event *bev)
 			     ui_evt_llss_name(bev->evt), &input);
 	session_close_on_net_error(rc);
 
-	/* DIAG: what did send_input actually return? Tells us whether the
-	 * device acts on a synchronous NEW_FRAME (fast) or falls back to POLL
-	 * and only sees the frame on the next ~poll_interval cycle (~5 s). */
-	printk("DIAG send_input rc=%d status=%d frame_id='%s' poll_after=%d\n",
-	       rc, input.status, input.frame_id, input.poll_after_ms);
-
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
 	}
@@ -820,6 +831,13 @@ static enum app_state do_send_input(const struct button_event *bev)
 	}
 
 	note_server_ok();
+
+	/* Server-driven transient popup (e.g. "hold the button to offer a draw").
+	 * Independent of any frame — it commonly rides a NO_CHANGE, so show it
+	 * before the status branch returns. No-op when empty / device menu is up. */
+	if (input.notice[0]) {
+		ui_notice_show(input.notice);
+	}
 
 	strncpy(latest_top_strip_id, input.top_strip_id,
 		sizeof(latest_top_strip_id) - 1);
@@ -1014,7 +1032,6 @@ static enum app_state do_fetch_frame(void)
 
 	/* Fetch straight into a display pipeline buffer — no copy. */
 	size_t cap = 0;
-	int64_t t_wb0 = k_uptime_get();
 	uint8_t *dst = display_frame_write_buf(&cap);
 	size_t png_len = 0;
 
@@ -1027,14 +1044,9 @@ static enum app_state do_fetch_frame(void)
 		return STATE_POLLING;
 	}
 
-	int64_t t_fetch0 = k_uptime_get();
 	rc = llss_fetch_frame(access_token, device_id, last_frame_id,
 			      dst, cap, &png_len);
-	int64_t t_fetch1 = k_uptime_get();
 	session_close_on_net_error(rc);
-	printk("DIAG fetch: write_buf=%lldms http_fetch=%lldms rc=%d png_len=%zu\n",
-	       (long long)(t_fetch0 - t_wb0), (long long)(t_fetch1 - t_fetch0),
-	       rc, png_len);
 
 	if (rc == -EACCES) {
 		return STATE_REFRESHING;
@@ -1064,11 +1076,8 @@ static enum app_state do_fetch_frame(void)
 #endif
 
 	if (png_len > 0) {
-		int64_t t_sub0 = k_uptime_get();
 		int32_t drc = display_frame_submit(png_len, latest_full_refresh);
 		latest_full_refresh = false; /* one-shot hint */
-		printk("DIAG submit: %lldms drc=%d\n",
-		       (long long)(k_uptime_get() - t_sub0), drc);
 
 		if (drc < 0) {
 			LOG_ERR("Frame submit failed: %d", drc);
@@ -1151,19 +1160,6 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 
 		session_check_reset();
 
-		/* Button events are only serviced while polling */
-		if (app_state == STATE_POLLING) {
-			struct button_event bev;
-
-			if (k_msgq_get(&btn_queue, &bev, K_NO_WAIT) == 0) {
-				LOG_INF("Button: %s %s",
-					ui_btn_llss_name(bev.btn),
-					ui_evt_llss_name(bev.evt));
-				app_state = do_send_input(&bev); /* -> POLLING | FETCHING_FRAME | REFRESHING */
-				continue;
-			}
-		}
-
 		switch (app_state) {
 		case STATE_REGISTERING:           /* -> REGISTERING | AUTHENTICATING */
 			app_state = do_register();
@@ -1178,6 +1174,22 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 			app_state = do_authenticate();
 			break;
 		case STATE_POLLING:               /* -> POLLING | FETCHING_FRAME | SLEEPING | REFRESHING */
+		{
+			struct button_event bev;
+			/* Service an already-queued button before issuing another /state
+			 * poll so user input never waits behind an avoidable round-trip. */
+			if (k_msgq_get(&btn_queue, &bev, K_NO_WAIT) == 0) {
+				LOG_INF("BTNTRACE llss consume code=%d evt=%d t=%u",
+					(int)bev.btn, (int)bev.evt, k_uptime_get_32());
+				LOG_INF("Button: %s %s",
+					ui_btn_llss_name(bev.btn),
+					ui_evt_llss_name(bev.evt));
+				app_state = do_send_input(&bev);
+				break;
+			}
+			if (app_state != STATE_POLLING) {
+				break; /* input sent us to another state */
+			}
 			app_state = do_poll();
 			/* Poll found nothing to fetch -> idle on the button queue for
 			 * one interval so a press is serviced instantly instead of
@@ -1186,6 +1198,7 @@ static void llss_thread_fn(void *arg1, void *arg2, void *arg3)
 				app_state = wait_button_or_poll(poll_interval_ms);
 			}
 			break;
+		}
 		case STATE_FETCHING_FRAME:        /* -> POLLING | REFRESHING */
 			app_state = do_fetch_frame();
 			break;

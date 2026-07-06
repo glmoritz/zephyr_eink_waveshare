@@ -6,6 +6,8 @@
 
 #include <zephyr/kernel.h>
 
+#include "input_events.h"
+
 /**
  * LVGL mutex — must be held for any lv_* call outside display_thread.c.
  * Exposed so device_ui.c can render under the same lock.
@@ -89,18 +91,45 @@ void ui_init(void);
 void ui_log_push(const char *msg);
 
 /**
+ * Request a local press-feedback overlay for @p btn, rendered by the display
+ * thread. Called from the input-callback thread on key-down; returns
+ * immediately (just latches the button and wakes the display thread). The slow
+ * e-ink flush then runs on the display thread — never on the caller — so it
+ * cannot block the input path and skew long-press timing. Latest press wins if
+ * several arrive before the display thread services them.
+ */
+void ui_press_feedback_request(enum ui_btn btn);
+
+/**
  * Update the user-facing placeholder shown on the main screen while no
  * server frame is available yet.
  *
- * Passing NULL or an empty string for icon/title/body leaves that field blank.
+ * The request is latched and applied by the display thread, so callers never
+ * wait on an e-paper refresh. Passing NULL or an empty string for
+ * icon/title/body leaves that field blank.
  */
 void ui_server_status_show(const char *icon, const char *title,
 			   const char *body);
 
 /**
  * Hide the main-screen placeholder so the latest server frame is shown.
+ *
+ * The hide is queued to the display thread; callers do not block on the
+ * panel refresh.
  */
 void ui_server_status_hide(void);
+
+/**
+ * Flash a transient, self-dismissing popup ("notice") over the server frame —
+ * a centred black toast with white text, e.g. "hold the button to offer a
+ * draw". Used for server-driven hints that are not tied to a frame (they ride
+ * a NO_CHANGE input response). Auto-hides after a couple of seconds.
+ *
+ * Thread-safe. The request is queued to the display thread, which coalesces it
+ * with any pending frame refresh. No-op while a device-local screen
+ * (menu/screensaver) is active. Passing NULL or an empty string is a no-op.
+ */
+void ui_notice_show(const char *text);
 
 /**
  * Return true once at least one server frame has been rendered.

@@ -99,6 +99,34 @@ static bool fb_fresh;  /* middle holds an unconsumed frame */
 static K_MUTEX_DEFINE(fb_mutex);
 static K_SEM_DEFINE(frame_work_sem, 0, 1);
 
+#define UI_STATUS_ICON_MAX  32
+#define UI_STATUS_TITLE_MAX 96
+#define UI_STATUS_BODY_MAX  192
+#define UI_NOTICE_TEXT_MAX  128
+
+struct pending_ui_updates {
+	bool status_pending;
+	bool status_visible;
+	char status_icon[UI_STATUS_ICON_MAX];
+	char status_title[UI_STATUS_TITLE_MAX];
+	char status_body[UI_STATUS_BODY_MAX];
+	bool notice_pending;
+	bool notice_visible;
+	char notice_text[UI_NOTICE_TEXT_MAX];
+};
+
+static K_MUTEX_DEFINE(ui_req_mutex);
+static struct pending_ui_updates pending_ui;
+
+/* Pending press-feedback button, latched by ui_press_feedback_request() from
+ * the input thread and consumed by the display thread. UI_BTN_NONE = none.
+ * Latest-press-wins; the display thread owns the slow e-ink blit. */
+static atomic_t press_fb_btn = ATOMIC_INIT(UI_BTN_NONE);
+
+/* Latest server-frame visibility state. Read by LLSS without taking lvgl_mutex
+ * so protocol progress never waits on an in-flight panel refresh. */
+static atomic_t server_frame_visible = ATOMIC_INIT(0);
+
 static bool display_worker_ready;
 
 /* =========================================================================
@@ -114,7 +142,11 @@ static lv_obj_t     *main_status_wrap;
 static lv_obj_t     *main_status_icon;
 static lv_obj_t     *main_status_title;
 static lv_obj_t     *main_status_body;
-static bool          server_frame_visible;
+static lv_obj_t     *notice_box;   /* transient server-notice toast (hidden by default) */
+static lv_obj_t     *notice_lbl;
+
+/* How long a notice toast stays on screen before auto-dismissing. */
+#define NOTICE_VISIBLE_MS 2500
 
 /* Bare opaque child panel — no border/padding/scroll. */
 static lv_obj_t *status_panel(lv_obj_t *parent, int32_t w, int32_t h,
@@ -204,6 +236,116 @@ static void main_status_hide_locked(void)
 	if (frame_img) {
 		lv_obj_clear_flag(frame_img, LV_OBJ_FLAG_HIDDEN);
 	}
+}
+
+/* =========================================================================
+ * Notice toast — transient server-driven popup over the server frame
+ * ========================================================================= */
+
+/* Centred black pill with white Chicago text, hidden until ui_notice_show().
+ * Built once on the main screen so it stacks above frame_img and clears with
+ * the same lvgl_mutex discipline as everything else here. */
+static void notice_build_locked(void)
+{
+	notice_box = status_panel(lvgl_main_scr, 620, 72, lv_color_black());
+	lv_obj_align(notice_box, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_style_radius(notice_box, 8, 0);
+	/* White frame so the black pill reads over a dark/busy board region. */
+	lv_obj_set_style_border_width(notice_box, 3, 0);
+	lv_obj_set_style_border_color(notice_box, lv_color_white(), 0);
+	lv_obj_set_style_border_opa(notice_box, LV_OPA_COVER, 0);
+	lv_obj_add_flag(notice_box, LV_OBJ_FLAG_HIDDEN);
+
+	notice_lbl = lv_label_create(notice_box);
+	lv_obj_set_width(notice_lbl, 620 - 32);
+	lv_obj_set_style_text_font(notice_lbl, &chicago_18, 0);
+	lv_obj_set_style_text_color(notice_lbl, lv_color_white(), 0);
+	lv_obj_set_style_text_align(notice_lbl, LV_TEXT_ALIGN_CENTER, 0);
+	lv_label_set_long_mode(notice_lbl, LV_LABEL_LONG_WRAP);
+	lv_label_set_text(notice_lbl, "");
+	lv_obj_center(notice_lbl);
+}
+
+static void notice_hide_locked(void)
+{
+	if (notice_box) {
+		lv_obj_add_flag(notice_box, LV_OBJ_FLAG_HIDDEN);
+	}
+}
+
+/* Fires NOTICE_VISIBLE_MS after a toast is shown: hide it and repaint. Skips
+ * the flush when a device-local screen took over meanwhile (the toast lives on
+ * the main screen, which isn't visible then — it will simply be hidden already
+ * when the user returns). */
+static void notice_hide_work_fn(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.notice_pending = true;
+	pending_ui.notice_visible = false;
+	k_mutex_unlock(&ui_req_mutex);
+	k_sem_give(&frame_work_sem);
+}
+
+static K_WORK_DELAYABLE_DEFINE(notice_hide_work, notice_hide_work_fn);
+
+static bool apply_pending_ui_locked(void)
+{
+	struct pending_ui_updates local = {0};
+	bool need_flush = false;
+	bool on_main = !device_ui_is_active();
+
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	local = pending_ui;
+	memset(&pending_ui, 0, sizeof(pending_ui));
+	k_mutex_unlock(&ui_req_mutex);
+
+	if (local.status_pending) {
+		if (local.status_visible) {
+			main_status_set_locked(local.status_icon,
+					       local.status_title,
+					       local.status_body);
+		} else {
+			main_status_hide_locked();
+		}
+		need_flush = need_flush || on_main;
+	}
+
+	if (local.notice_pending) {
+		if (local.notice_visible) {
+			if (notice_box && on_main) {
+				lv_label_set_text(notice_lbl, local.notice_text);
+				lv_obj_clear_flag(notice_box, LV_OBJ_FLAG_HIDDEN);
+				lv_obj_move_foreground(notice_box);
+				need_flush = true;
+			}
+		} else {
+			notice_hide_locked();
+			need_flush = need_flush || on_main;
+		}
+	}
+
+	return need_flush;
+}
+
+void ui_notice_show(const char *text)
+{
+	if (!text || !text[0]) {
+		return;
+	}
+
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.notice_pending = true;
+	pending_ui.notice_visible = true;
+	strncpy(pending_ui.notice_text, text,
+		sizeof(pending_ui.notice_text) - 1);
+	pending_ui.notice_text[sizeof(pending_ui.notice_text) - 1] = '\0';
+	k_mutex_unlock(&ui_req_mutex);
+	k_sem_give(&frame_work_sem);
+
+	/* (Re)arm the auto-dismiss — a fresh notice restarts the timer. */
+	k_work_reschedule(&notice_hide_work, K_MSEC(NOTICE_VISIBLE_MS));
 }
 
 /* =========================================================================
@@ -405,7 +547,7 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len,
 	}
 
 	lv_image_set_src(frame_img, &frame_dsc);
-	server_frame_visible = true;
+	atomic_set(&server_frame_visible, 1);
 	main_status_hide_locked();
 
 	/* Capture the band areas of this frame so a subsequent press can invert
@@ -471,17 +613,26 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 		}
 		k_mutex_unlock(&fb_mutex);
 
-		if (!have) {
-			continue;
-		}
-
-		LOG_INF("Displaying frame (%zu bytes, %s)",
-			fb_back.len, fb_back.full_refresh ? "full" : "partial");
+		enum ui_btn fb_btn =
+			(enum ui_btn)atomic_set(&press_fb_btn, UI_BTN_NONE);
+		bool need_ui_flush;
 
 		k_mutex_lock(&lvgl_mutex, K_FOREVER);
-		display_frame_locked(fb_back.buf, fb_back.len,
-				     fb_back.full_refresh);
+		need_ui_flush = apply_pending_ui_locked();
+
+		if (have) {
+			LOG_INF("Displaying frame (%zu bytes, %s)",
+				fb_back.len, fb_back.full_refresh ? "full" : "partial");
+			display_frame_locked(fb_back.buf, fb_back.len,
+					     fb_back.full_refresh);
+		} else if (need_ui_flush) {
+			ui_lvgl_flush(false, UI_CTX_UI);
+		}
 		k_mutex_unlock(&lvgl_mutex);
+
+		if (!have && fb_btn != UI_BTN_NONE) {
+			press_feedback_show(fb_btn);
+		}
 	}
 }
 
@@ -524,6 +675,10 @@ void ui_init(void)
 	 * stack above frame_img and clear naturally when a new frame submits. */
 	press_feedback_init(lvgl_main_scr);
 
+	/* Notice toast sits on the same screen, above everything, hidden until
+	 * a server "notice" arrives. */
+	notice_build_locked();
+
 	ui_lvgl_flush(false, UI_CTX_SWITCH);
 
 	k_mutex_unlock(&lvgl_mutex);
@@ -536,36 +691,54 @@ void ui_log_push(const char *msg)
 	device_ui_log_push(msg);
 }
 
+void ui_press_feedback_request(enum ui_btn btn)
+{
+	if (btn == UI_BTN_NONE) {
+		return;
+	}
+
+	/* Latch the button and wake the display thread. Fast + non-blocking so
+	 * the input callback returns at once; the display thread does the actual
+	 * e-ink blit. frame_work_sem coalesces (max 1) — the loop checks both the
+	 * press-fb latch and the frame mailbox each wake, so a coincident frame
+	 * submit is not lost. */
+	LOG_INF("BTNTRACE display request btn=%d t=%u",
+		(int)btn, k_uptime_get_32());
+	atomic_set(&press_fb_btn, (atomic_val_t)btn);
+	k_sem_give(&frame_work_sem);
+}
+
 void ui_server_status_show(const char *icon, const char *title,
 			   const char *body)
 {
-	k_mutex_lock(&lvgl_mutex, K_FOREVER);
-	main_status_set_locked(icon, title, body);
-	if (!device_ui_is_active()) {
-		ui_lvgl_flush(false, UI_CTX_UI);
-	}
-	k_mutex_unlock(&lvgl_mutex);
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.status_pending = true;
+	pending_ui.status_visible = true;
+	strncpy(pending_ui.status_icon, (icon && icon[0]) ? icon : "",
+		sizeof(pending_ui.status_icon) - 1);
+	pending_ui.status_icon[sizeof(pending_ui.status_icon) - 1] = '\0';
+	strncpy(pending_ui.status_title, (title && title[0]) ? title : "",
+		sizeof(pending_ui.status_title) - 1);
+	pending_ui.status_title[sizeof(pending_ui.status_title) - 1] = '\0';
+	strncpy(pending_ui.status_body, (body && body[0]) ? body : "",
+		sizeof(pending_ui.status_body) - 1);
+	pending_ui.status_body[sizeof(pending_ui.status_body) - 1] = '\0';
+	k_mutex_unlock(&ui_req_mutex);
+	k_sem_give(&frame_work_sem);
 }
 
 void ui_server_status_hide(void)
 {
-	k_mutex_lock(&lvgl_mutex, K_FOREVER);
-	main_status_hide_locked();
-	if (!device_ui_is_active()) {
-		ui_lvgl_flush(false, UI_CTX_UI);
-	}
-	k_mutex_unlock(&lvgl_mutex);
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.status_pending = true;
+	pending_ui.status_visible = false;
+	k_mutex_unlock(&ui_req_mutex);
+	k_sem_give(&frame_work_sem);
 }
 
 bool ui_has_server_frame(void)
 {
-	bool have_frame;
-
-	k_mutex_lock(&lvgl_mutex, K_FOREVER);
-	have_frame = server_frame_visible;
-	k_mutex_unlock(&lvgl_mutex);
-
-	return have_frame;
+	return atomic_get(&server_frame_visible) != 0;
 }
 
 uint8_t *display_frame_write_buf(size_t *cap)

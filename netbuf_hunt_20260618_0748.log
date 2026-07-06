@@ -1,0 +1,108 @@
+[07:48:55.657] :~$ [m
+[07:48:55.657] [1;32muart:~$ [m
+[07:48:55.657] [1;32muart:~$ [m^[[1;32muart[20D[J[1;31m[1;31m--- 51 messages dropped ---
+[07:48:55.660] [0m[m                     : Total CPU cycles used: 2168
+[07:48:55.661] [1;32muart:~$ [m^[[1;32muart[20D[J shell_uart          : STACK: unused 3184 usage 912 / 4096 (22 %); CPU: 0 %
+[07:48:55.677] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 88828
+[07:48:55.693] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:00.180,000] [0m<inf> shtc3: SHTC3: temperature=21.59 C humidity=44.41 %[0m
+[07:48:55.709] [1;32muart:~$ [m^[[1;32muart[20D[J wifi                : STACK: unused 2992 usage 592 / 3584 (16 %); CPU: 2 %
+[07:48:55.725] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 636745
+[07:48:55.741] [1;32muart:~$ [m^[[1;32muart[20D[J sysworkq            : STACK: unused 3776 usage 320 / 4096 (7 %); CPU: 0 %
+[07:48:55.757] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 1349
+[07:48:55.773] [1;32muart:~$ [m^[[1;32muart[20D[J esp_timer           : STACK: unused 3776 usage 320 / 4096 (7 %); CPU: 0 %
+[07:48:55.789] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:03.929,000] [0m<inf> wifi_prov: Stored creds SSID=tutu, trying STA...[0m
+[07:48:55.805] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:03.929,000] [0m<inf> llss: WiFi connecting: tutu[0m
+[07:48:55.821] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[00:00:09.540,000] [0m<inf> net_dhcpv4: Received: 192.168.213.15[0m
+[07:49:00.875] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:09.540,000] [0m<inf> wifi_prov: Got IPv4: 192.168.213.15[0m
+[07:49:00.891] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:09.540,000] [0m<inf> wifi_prov: WiFi STA connected: tutu[0m
+[07:49:00.907] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:09.540,000] [0m<inf> wifi_prov: Waiting for first IP (v4 or v6) up to 25 s...[0m
+[07:49:00.923] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:09.540,000] [0m<inf> wifi_prov: Got v4 — waiting up to 5 s for the other family[0m
+[07:49:00.939] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[00:00:14.540,000] [0m<inf> wifi_prov: DNS server [0]: 192.168.213.1 (source: DHCP)[0m
+[07:49:05.876] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:14.540,000] [0m<inf> llss: WiFi connected: 192.168.213.15[0m
+[07:49:05.891] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[00:00:15.730,000] [0m<inf> ntp_sync: NTP synced: 2026-06-18 10:49:06 UTC[0m
+[07:49:07.065] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[00:00:16.841,000] [0m<inf> llss: Token refreshed — polling[0m
+[07:49:08.265] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[00:00:18.968,000] [0m<inf> llss_client: DIAG http frames: path=/devices/dev_7380c1e5ca58/frames/frame_98d79af9151e?raw=true reuse=1 total=516ms first_body=414ms tail=102ms max_gap=27ms frag_count=9 frag_bytes=48000 status=200 rc=321 body=48000[0m
+[07:49:10.305] [1;32muart:~$ [m^[[1;32muart[20D[JDIAG fetch: write_buf=0ms http_fetch=516ms rc=0 png_len=48000
+[07:49:10.321] [1;32muart:~$ [m^[[1;32muart[20D[JDIAG submit: 0ms drc=0
+[07:49:10.336] [1;32muart:~$ [m^[[1;32muart[20D[J[00:00:18.974,000] [0m<inf> display: Displaying frame (48000 bytes)[0m
+[07:49:10.353] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[JNETMEM up=30s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=0 alloc=0 max=0
+[07:49:21.514] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;31m[1;31m--- 25 messages dropped ---
+[07:49:50.520] [0m[m net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[07:49:50.521] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 174818
+[07:49:50.537] [1;32muart:~$ [m^[[1;32muart[20D[J tcp_work            : STACK: unused 1728 usage 320 / 2048 (15 %); CPU: 0 %
+[07:49:50.553] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 2168
+[07:49:50.569] [1;32muart:~$ [m^[[1;32muart[20D[J shell_uart          : STACK: unused 2816 usage 1280 / 4096 (31 %); CPU: 0 %
+[07:49:50.585] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 2868240
+[07:49:50.601] [1;32muart:~$ [m^[[1;32muart[20D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 1 %
+[07:49:50.617] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 266870392
+[07:49:50.633] [1;32muart:~$ [m^[[1;32muart[20D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[07:49:50.649] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 1976289
+[07:49:50.665] [1;32muart:~$ [m^[[1;32muart[20D[J esp_timer           : STACK: unused 3696 usage 400 / 4096 (9 %); CPU: 0 %
+[07:49:50.681] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 5594684
+[07:49:50.697] [1;32muart:~$ [m^[[1;32muart[20D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[07:49:50.713] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 356834
+[07:49:50.729] [1;32muart:~$ [m^[[1;32muart[20D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 92 %
+[07:49:50.745] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 13379322009
+[07:49:50.761] [1;32muart:~$ [m^[[1;32muart[20D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[07:49:50.777] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 0
+[07:49:50.793] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[JNETMEM up=90s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=0 alloc=0 max=0
+[07:50:21.514] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;31m[1;31m--- 25 messages dropped ---
+[07:50:50.523] [0m[m net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[07:50:50.524] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 197177
+[07:50:50.540] [1;32muart:~$ [m^[[1;32muart[20D[J tcp_work            : STACK: unused 1728 usage 320 / 2048 (15 %); CPU: 0 %
+[07:50:50.556] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 2168
+[07:50:50.572] [1;32muart:~$ [m^[[1;32muart[20D[J shell_uart          : STACK: unused 2816 usage 1280 / 4096 (31 %); CPU: 0 %
+[07:50:50.588] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 4040372
+[07:50:50.604] [1;32muart:~$ [m^[[1;32muart[20D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 1 %
+[07:50:50.620] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 371054802
+[07:50:50.636] [1;32muart:~$ [m^[[1;32muart[20D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[07:50:50.652] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 4085797
+[07:50:50.668] [1;32muart:~$ [m^[[1;32muart[20D[J esp_timer           : STACK: unused 3696 usage 400 / 4096 (9 %); CPU: 0 %
+[07:50:50.684] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 11569502
+[07:50:50.701] [1;32muart:~$ [m^[[1;32muart[20D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[07:50:50.717] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 456550
+[07:50:50.733] [1;32muart:~$ [m^[[1;32muart[20D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 95 %
+[07:50:50.749] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 27636138484
+[07:50:50.765] [1;32muart:~$ [m^[[1;32muart[20D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[07:50:50.781] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 0
+[07:50:50.801] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[JNETMEM up=150s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=0 alloc=0 max=0
+[07:51:21.515] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;31m[1;31m--- 25 messages dropped ---
+[07:51:50.527] [0m[m net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[07:51:50.528] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 219022
+[07:51:50.543] [1;32muart:~$ [m^[[1;32muart[20D[J tcp_work            : STACK: unused 1728 usage 320 / 2048 (15 %); CPU: 0 %
+[07:51:50.560] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 2168
+[07:51:50.575] [1;32muart:~$ [m^[[1;32muart[20D[J shell_uart          : STACK: unused 2816 usage 1280 / 4096 (31 %); CPU: 0 %
+[07:51:50.592] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 5390648
+[07:51:50.607] [1;32muart:~$ [m^[[1;32muart[20D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 1 %
+[07:51:50.624] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 474787412
+[07:51:50.639] [1;32muart:~$ [m^[[1;32muart[20D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[07:51:50.656] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 6460026
+[07:51:50.671] [1;32muart:~$ [m^[[1;32muart[20D[J esp_timer           : STACK: unused 3696 usage 400 / 4096 (9 %); CPU: 0 %
+[07:51:50.688] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 17473228
+[07:51:50.704] [1;32muart:~$ [m^[[1;32muart[20D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[07:51:50.720] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 559132
+[07:51:50.735] [1;32muart:~$ [m^[[1;32muart[20D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 96 %
+[07:51:50.752] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 41891877184
+[07:51:50.768] [1;32muart:~$ [m^[[1;32muart[20D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[07:51:50.784] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 0
+[07:51:50.799] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[JNETMEM up=210s pktRX=40/40 pktTX=16/16 bufRX=160/160/m102 bufTX=80/80/m4 sysheap_free=0 alloc=0 max=0
+[07:52:21.516] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;31m[1;31m--- 25 messages dropped ---
+[07:52:50.530] [0m[m net_mgmt            : STACK: unused 3424 usage 672 / 4096 (16 %); CPU: 0 %
+[07:52:50.531] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 241570
+[07:52:50.547] [1;32muart:~$ [m^[[1;32muart[20D[J tcp_work            : STACK: unused 1728 usage 320 / 2048 (15 %); CPU: 0 %
+[07:52:50.563] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 2168
+[07:52:50.579] [1;32muart:~$ [m^[[1;32muart[20D[J shell_uart          : STACK: unused 2816 usage 1280 / 4096 (31 %); CPU: 0 %
+[07:52:50.595] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 6561870
+[07:52:50.611] [1;32muart:~$ [m^[[1;32muart[20D[J wifi                : STACK: unused 1456 usage 2128 / 3584 (59 %); CPU: 1 %
+[07:52:50.628] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 579593150
+[07:52:50.643] [1;32muart:~$ [m^[[1;32muart[20D[J sysworkq            : STACK: unused 3248 usage 848 / 4096 (20 %); CPU: 0 %
+[07:52:50.659] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 8331293
+[07:52:50.675] [1;32muart:~$ [m^[[1;32muart[20D[J esp_timer           : STACK: unused 3696 usage 400 / 4096 (9 %); CPU: 0 %
+[07:52:50.691] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 23337802
+[07:52:50.707] [1;32muart:~$ [m^[[1;32muart[20D[J logging             : STACK: unused 544 usage 480 / 1024 (46 %); CPU: 0 %
+[07:52:50.724] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 659531
+[07:52:50.739] [1;32muart:~$ [m^[[1;32muart[20D[J idle                : STACK: unused 816 usage 208 / 1024 (20 %); CPU: 97 %
+[07:52:50.756] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 56147162641
+[07:52:50.773] [1;32muart:~$ [m^[[1;32muart[20D[J ISR0                : STACK: unused 1520 usage 528 / 2048 (25 %); CPU: 0 %
+[07:52:50.788] [1;32muart:~$ [m^[[1;32muart[20D[J                     : Total CPU cycles used: 0
+[07:52:50.803] [1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart[20D[J[1;32muart:~$ [m^[[1;32muart

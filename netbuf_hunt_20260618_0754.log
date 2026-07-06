@@ -1,0 +1,10 @@
+[07:54:48.700] [![[18D[J[00:00:03.992,000] [0m<inf> wifi_prov: Stored creds SSID=tutu, trying STA...[0m
+[07:54:50.475] [1;32muart:~$ [m![![![![![[18D[J[00:00:03.999,000] [0m<inf> llss: WiFi connecting: tutu[0m
+[07:54:50.481] [1;32muart:~$ [m![![![![![[18D[J[00:00:11.768,000] [0m<inf> net_dhcpv4: Received: 192.168.213.15[0m
+[07:54:58.251] [1;32muart:~$ [m![![![![![[18D[J[00:00:11.775,000] [0m<inf> wifi_prov: Got IPv4: 192.168.213.15[0m
+[07:54:58.258] [1;32muart:~$ [m![![![![![[18D[J[00:00:11.782,000] [0m<inf> wifi_prov: WiFi STA connected: tutu[0m
+[07:54:58.265] [1;32muart:~$ [m![![![![![[18D[J[00:00:11.789,000] [0m<inf> wifi_prov: Waiting for first IP (v4 or v6) up to 25 s...[0m
+[07:54:58.273] [1;32muart:~$ [m![![![![![[18D[J[00:00:11.797,000] [0m<inf> wifi_prov: Got v4 — waiting up to 5 s for the other family[0m
+[07:54:58.281] [1;32muart:~$ [m![![![![![[18D[J[00:00:16.805,000] [0m<inf> wifi_prov: DNS server [0]: 192.168.213.1 (source: DHCP)[0m
+[07:55:03.289] [1;32muart:~$ [m![![![![![[18D[J[00:00:16.813,000] [0m<inf> llss: WiFi connected: 192.168.213.15[0m
+[07:55:03.296] [1;32muart:~$ [m![![![![![

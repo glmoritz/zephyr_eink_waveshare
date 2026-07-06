@@ -184,9 +184,8 @@ config LLSS_NETMEM_DEBUG
 	  Register shell commands that print a single greppable "NETMEM" snapshot
 	  on demand: net_pkt RX/TX slab free, net_buf RX/TX data pool avail/max,
 	  and the system heap free/alloc/max. Used to chase the slow net-buffer /
-	  heap leak without adding periodic console noise. Also registers
-	  convenience commands for one-shot thread analyzer output when that
-	  subsystem is enabled. Debug aid; keep disabled for normal operation.
+	  heap leak without adding periodic console noise. Debug aid; keep disabled
+	  for normal operation.
 
 config LLSS_PKT_LIFETIME
 	bool "Trace alloc/free lifetime of the leaking net_pkt types (temporary debug)"

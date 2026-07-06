@@ -331,6 +331,8 @@ void press_feedback_hide_locked(void)
 
 void press_feedback_show(enum ui_btn btn)
 {
+	uint32_t start_t_ms = k_uptime_get_32();
+
 	if (btn < 0 || btn >= UI_BTN_COUNT) {
 		return;
 	}
@@ -365,6 +367,8 @@ void press_feedback_show(enum ui_btn btn)
 				      : &bot_inv[pos->slot].dsc;
 
 	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	LOG_INF("BTNTRACE display show_start btn=%d t=%u",
+		(int)btn, start_t_ms);
 
 	press_feedback_hide_locked();
 
@@ -374,6 +378,8 @@ void press_feedback_show(enum ui_btn btn)
 	lv_obj_move_foreground(band_img);
 
 	ui_lvgl_flush(false, UI_CTX_SERVER);
+	LOG_INF("BTNTRACE display show_done btn=%d dt=%u t=%u",
+		(int)btn, k_uptime_get_32() - start_t_ms, k_uptime_get_32());
 
 	k_mutex_unlock(&lvgl_mutex);
 }

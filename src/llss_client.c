@@ -27,7 +27,6 @@ LOG_MODULE_REGISTER(llss_client, LOG_LEVEL_INF);
  * Compile-time constants derived from Kconfig
  * ========================================================================= */
 
-/* Parse the server URL "https://host:port/base" into parts at init time. */
 #define LLSS_MAX_HOSTNAME  CONFIG_LLSS_MAX_HOSTNAME
 #define LLSS_MAX_BASE_PATH CONFIG_LLSS_MAX_BASE_PATH
 #define LLSS_MAX_URL_LEN   CONFIG_LLSS_MAX_URL_LEN
@@ -664,7 +663,6 @@ static int do_request(enum http_method method, const char *path,
 		      uint8_t *recv_buf, size_t recv_buf_size,
 		      size_t *body_len_out)
 {
-	int64_t req_start_ms = k_uptime_get();
 	/* Phase A: reuse persistent session socket if one is open. */
 	bool owned_sock = (session_sock < 0);
 	int32_t sock = owned_sock ? open_tls_socket() : session_sock;
@@ -728,26 +726,6 @@ static int do_request(enum http_method method, const char *path,
 	};
 
 	int32_t rc = http_client_req(sock, &req, CONFIG_LLSS_HTTP_TIMEOUT_MS, &ctx);
-	int64_t req_end_ms = k_uptime_get();
-	bool is_frame_fetch = (method == HTTP_GET) && (strstr(path, "/frames/") != NULL);
-
-	if (is_frame_fetch) {
-		int64_t first_body_ms = ctx.saw_body ? (ctx.first_body_ms - req_start_ms) : -1;
-		int64_t body_tail_ms = ctx.saw_body ? (req_end_ms - ctx.first_body_ms) : -1;
-
-		LOG_INF("DIAG http frames: path=%s reuse=%d total=%lldms first_body=%lldms tail=%lldms max_gap=%lldms frag_count=%u frag_bytes=%zu status=%d rc=%d body=%zu",
-			path, !owned_sock,
-			(long long)(req_end_ms - req_start_ms),
-			(long long)first_body_ms,
-			(long long)body_tail_ms,
-			(long long)ctx.max_body_gap_ms,
-			ctx.body_frag_count,
-			ctx.total_frag_bytes,
-			ctx.http_status,
-			rc,
-			ctx.len);
-	}
-
 	if (owned_sock) {
 		drain_and_close(sock);
 	} else if (rc < 0) {
@@ -910,6 +888,7 @@ struct input_resp {
 	char frame_id[64];
 	int32_t poll_after_ms;
 	char message[128];
+	char notice[128];
 	char top_strip_id[LLSS_STRIP_ID_MAX];
 	char bottom_strip_id[LLSS_STRIP_ID_MAX];
 	int32_t top_enabled_mask;
@@ -922,6 +901,7 @@ static const struct json_obj_descr input_resp_descr[] = {
 	JSON_OBJ_DESCR_PRIM(struct input_resp, frame_id,            JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, poll_after_ms,       JSON_TOK_NUMBER),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, message,             JSON_TOK_STRING_BUF),
+	JSON_OBJ_DESCR_PRIM(struct input_resp, notice,              JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, top_strip_id,        JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, bottom_strip_id,     JSON_TOK_STRING_BUF),
 	JSON_OBJ_DESCR_PRIM(struct input_resp, top_enabled_mask,    JSON_TOK_NUMBER),
@@ -1245,15 +1225,6 @@ int llss_get_device_state(const char *access_token, const char *device_id,
 		return rc;
 	}
 
-	/* TEMP DEBUG: dump the raw body + the parsed bitmask so we can see
-	 * which fields the json_obj_parser matched (bit 8 = full_refresh). */
-	printk("DIAG state JSON: %.*s\n",
-	       (int)MIN(strnlen((char *)json_recv_buf, sizeof(json_recv_buf)),
-			(size_t)600),
-	       json_recv_buf);
-	printk("DIAG state parsed rc=0x%x full_refresh=%d\n",
-	       rc, (int)resp.full_refresh);
-
 	/* Map action string → enum */
 	if (strcmp(resp.action, "FETCH_FRAME") == 0) {
 		state_out->action = LLSS_ACTION_FETCH_FRAME;
@@ -1463,6 +1434,9 @@ int llss_send_input(const char *access_token, const char *device_id,
 
 	strncpy(resp_out->frame_id, resp.frame_id,
 		sizeof(resp_out->frame_id) - 1);
+	strncpy(resp_out->notice, resp.notice,
+		sizeof(resp_out->notice) - 1);
+	resp_out->notice[sizeof(resp_out->notice) - 1] = '\0';
 	strncpy(resp_out->top_strip_id, resp.top_strip_id,
 		sizeof(resp_out->top_strip_id) - 1);
 	resp_out->top_strip_id[sizeof(resp_out->top_strip_id) - 1] = '\0';

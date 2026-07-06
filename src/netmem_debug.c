@@ -21,9 +21,6 @@
 #include <zephyr/net_buf.h>
 #include <zephyr/sys/sys_heap.h>
 #include <zephyr/sys/mem_stats.h>
-#if defined(CONFIG_THREAD_ANALYZER)
-#include <zephyr/debug/thread_analyzer.h>
-#endif
 
 /* Zephyr system heap (k_malloc/k_free target). On this ESP32-S3 build the WiFi
  * driver's big buffers go to the PSRAM shared_multi_heap (ESP_WIFI_HEAP_SPIRAM),
@@ -104,39 +101,9 @@ static int cmd_diag_netmem(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-#if defined(CONFIG_THREAD_ANALYZER)
-static int cmd_diag_threads(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(sh);
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-
-	thread_analyzer_print(0);
-
-	return 0;
-}
-
-static int cmd_diag_all(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-
-	netmem_dump(sh);
-	thread_analyzer_print(0);
-
-	return 0;
-}
-#endif
-
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_diag,
 	SHELL_CMD(netmem, NULL,
 		  "Print one-shot network/buffer/heap telemetry", cmd_diag_netmem),
-#if defined(CONFIG_THREAD_ANALYZER)
-	SHELL_CMD(threads, NULL,
-		  "Print one-shot thread stack/runtime telemetry", cmd_diag_threads),
-	SHELL_CMD(all, NULL,
-		  "Print one-shot NETMEM + thread telemetry", cmd_diag_all),
-#endif
 	SHELL_SUBCMD_SET_END
 );
 
