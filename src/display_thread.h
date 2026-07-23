@@ -101,6 +101,23 @@ void ui_log_push(const char *msg);
 void ui_press_feedback_request(enum ui_btn btn);
 
 /**
+ * Latch newly-prefetched pressed-strip ids + enabled-slot masks for the display
+ * thread to apply under @ref lvgl_mutex.
+ *
+ * Called from the LLSS thread after a strip prefetch. It must not take
+ * lvgl_mutex itself: doing so parks the network path behind an in-flight e-ink
+ * refresh, which is exactly what serialised the input HTTP round-trip against
+ * the press-feedback blit. Non-blocking; latest values win.
+ *
+ * @param top_id/bot_id  strip ids, "" or NULL for none.
+ * @param top_mask/bot_mask  enabled-slot bitmasks, or <0 when the server did
+ *                           not advertise one (press_feedback then keeps its
+ *                           capture-time heuristic).
+ */
+void ui_press_feedback_update_strips(const char *top_id, const char *bot_id,
+				     int32_t top_mask, int32_t bot_mask);
+
+/**
  * Update the user-facing placeholder shown on the main screen while no
  * server frame is available yet.
  *

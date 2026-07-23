@@ -31,6 +31,7 @@
 
 #include "device_ui.h"
 #include "display_thread.h"
+#include "llss_client.h"
 #include "material_icons.h"
 #include "press_feedback.h"
 #include "section_attrs.h"
@@ -113,6 +114,16 @@ struct pending_ui_updates {
 	bool notice_pending;
 	bool notice_visible;
 	char notice_text[UI_NOTICE_TEXT_MAX];
+	/* Pressed-strip variant rebuild, latched by the LLSS thread after a
+	 * prefetch. Applied here (not there) so the network path never blocks on
+	 * lvgl_mutex behind an in-flight panel refresh — that coupling is what
+	 * serialised the HTTP round-trip against the e-ink blit. Masks < 0 mean
+	 * "server didn't advertise one", matching press_feedback's *_known args. */
+	bool strips_pending;
+	char strip_top_id[LLSS_STRIP_ID_MAX];
+	char strip_bot_id[LLSS_STRIP_ID_MAX];
+	int32_t strip_top_mask;
+	int32_t strip_bot_mask;
 };
 
 static K_MUTEX_DEFINE(ui_req_mutex);
@@ -312,6 +323,18 @@ static bool apply_pending_ui_locked(void)
 		need_flush = need_flush || on_main;
 	}
 
+	/* Offscreen variant rebuild only — no panel content changes, so this
+	 * deliberately does not set need_flush. */
+	if (local.strips_pending) {
+		press_feedback_refresh_strips_locked(local.strip_top_id,
+						     local.strip_bot_id);
+		press_feedback_set_enabled_masks_locked(
+			(uint8_t)(local.strip_top_mask & 0xFF),
+			local.strip_top_mask >= 0,
+			(uint8_t)(local.strip_bot_mask & 0xFF),
+			local.strip_bot_mask >= 0);
+	}
+
 	if (local.notice_pending) {
 		if (local.notice_visible) {
 			if (notice_box && on_main) {
@@ -392,11 +415,21 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 	ARG_UNUSED(dither);
 #endif
 
+	/* TEMP instrumentation (BTNTRACE): splits the non-yielding CPU cost of
+	 * LVGL render + the driver's write() bit-pack/dither from the panel work
+	 * (SPI + waveform), to size the residual starvation of sub-priority-12
+	 * threads. Remove once characterised. */
+	uint32_t t_lvgl0 = k_uptime_get_32();
+
 	lv_task_handler();
+
+	uint32_t t_lvgl = k_uptime_get_32() - t_lvgl0;
 
 	if (!device_is_ready(disp)) {
 		return;
 	}
+
+	uint32_t t_panel0 = k_uptime_get_32();
 
 #if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
 	/* Full only when the whole image is meant to change (screen/HLSS switch,
@@ -410,8 +443,13 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 	} else {
 		custom_ssd16xx_refresh_partial(disp);
 	}
+
+	LOG_INF("BTNTRACE flush lvgl=%u panel=%u ctx=%d",
+		t_lvgl, k_uptime_get_32() - t_panel0, (int)ctx);
 #else
 	ARG_UNUSED(ctx);
+	ARG_UNUSED(t_lvgl);
+	ARG_UNUSED(t_panel0);
 	display_blanking_off(disp);
 #endif
 }
@@ -644,6 +682,45 @@ K_THREAD_DEFINE(display_thread, DISPLAY_THREAD_STACK,
  * Public API
  * ========================================================================= */
 
+#if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+/*
+ * Flush callback replacing Zephyr's lvgl_flush_cb_mono().
+ *
+ * The stock one always calls lvgl_transform_buffer(), a per-pixel loop over the
+ * whole area (plus a full-buffer memset and memcpy) that re-lays-out the bits.
+ * For this panel that transform is an identity: we advertise
+ * SCREEN_INFO_MONO_MSB_FIRST with horizontal tiling, LVGL renders I1 MSB-first,
+ * and LV_DRAW_BUF_STRIDE_ALIGN is 1 so the row stride is already 100 bytes. So
+ * we hand LVGL's buffer straight to the driver, whose mono write() is a memcpy
+ * into the planes — zero conversions from LVGL's canvas to the glass.
+ *
+ * Deliberately omits the stock callback's display_blanking_on/off dance: the
+ * panel refresh is driven by ui_lvgl_flush() after lv_task_handler() returns,
+ * not by LVGL, so blanking here would trigger refreshes we do not want.
+ */
+static void llss_lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
+			       uint8_t *px_map)
+{
+	const struct device *display_dev = DEVICE_DT_GET(DISPLAY_NODE);
+	uint16_t w = area->x2 - area->x1 + 1;
+	uint16_t h = area->y2 - area->y1 + 1;
+
+	/* LVGL reserves a 2-entry palette ahead of an I1 buffer. */
+	px_map += 2 * sizeof(lv_color32_t);
+
+	struct display_buffer_descriptor desc = {
+		.buf_size = ((uint32_t)w * h) / 8U,
+		.width    = w,
+		.pitch    = w,
+		.height   = h,
+		.frame_incomplete = !lv_display_flush_is_last(disp),
+	};
+
+	(void)display_write(display_dev, area->x1, area->y1, &desc, px_map);
+	lv_display_flush_ready(disp);
+}
+#endif
+
 void ui_init(void)
 {
 #if defined(CONFIG_LLSS_PATTERN_TEST)
@@ -662,6 +739,13 @@ void ui_init(void)
 	lv_lodepng_init();
 
 	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+
+#if DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+	/* Swap in the transform-free flush path (see llss_lvgl_flush_cb). Zephyr's
+	 * auto-init already built the mono display + rounder for us; only the
+	 * flush callback needs replacing. */
+	lv_display_set_flush_cb(lv_display_get_default(), llss_lvgl_flush_cb);
+#endif
 
 	lvgl_main_scr = lv_screen_active();
 	lv_obj_set_style_bg_color(lvgl_main_scr, lv_color_white(), 0);
@@ -689,6 +773,24 @@ void ui_init(void)
 void ui_log_push(const char *msg)
 {
 	device_ui_log_push(msg);
+}
+
+void ui_press_feedback_update_strips(const char *top_id, const char *bot_id,
+				     int32_t top_mask, int32_t bot_mask)
+{
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.strips_pending = true;
+	strncpy(pending_ui.strip_top_id, top_id ? top_id : "",
+		sizeof(pending_ui.strip_top_id) - 1);
+	pending_ui.strip_top_id[sizeof(pending_ui.strip_top_id) - 1] = '\0';
+	strncpy(pending_ui.strip_bot_id, bot_id ? bot_id : "",
+		sizeof(pending_ui.strip_bot_id) - 1);
+	pending_ui.strip_bot_id[sizeof(pending_ui.strip_bot_id) - 1] = '\0';
+	pending_ui.strip_top_mask = top_mask;
+	pending_ui.strip_bot_mask = bot_mask;
+	k_mutex_unlock(&ui_req_mutex);
+
+	k_sem_give(&frame_work_sem);
 }
 
 void ui_press_feedback_request(enum ui_btn btn)

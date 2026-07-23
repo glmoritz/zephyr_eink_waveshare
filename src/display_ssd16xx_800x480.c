@@ -229,7 +229,15 @@ struct custom_ssd16xx_data {
 	/* Telemetry for the `epd status` shell command / refresh tuning. */
 	uint32_t last_refresh_ms;
 	uint8_t last_seq;
+
+	/* Active pixel format. MONO01 = native 1bpp (write() is a memcpy);
+	 * L_8 keeps the dormant dither/GRAY2/GRAY_MARK conversion path alive. */
+	enum display_pixel_format pixel_format;
 };
+
+/* TEMP instrumentation: cycles spent inside write() since the last refresh,
+ * to separate our L8->plane conversion from LVGL's own rasterisation. */
+static uint32_t g_write_cycles;
 
 static int custom_ssd16xx_busy_wait(const struct device *dev, uint32_t timeout_ms)
 {
@@ -576,6 +584,10 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 	uint8_t tmp[2];
 	int32_t err;
 
+	/* TEMP instrumentation (BTNTRACE): a partial clocks THREE 48 KB planes
+	 * out over SPI, so separate that cost from the panel waveform. */
+	uint32_t t_pre0 = k_uptime_get_32();
+
 	/* Previous frame -> RED RAM (the image the controller diffs against) */
 	err = custom_ssd16xx_reset_ram_ptr(dev);
 	if (err < 0) {
@@ -597,6 +609,8 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 	if (err < 0) {
 		return err;
 	}
+
+	uint32_t t_pre = k_uptime_get_32() - t_pre0;
 
 	/* Display Update Control 2: 0xFC = OTP partial waveform. (Option B if
 	 * ghosting is bad: load lut_1Gray_A2 via 0x32 and use 0xC7 here instead.)
@@ -637,6 +651,8 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 	}
 	data->last_refresh_ms = k_uptime_get_32() - t0;
 
+	uint32_t t_post0 = k_uptime_get_32();
+
 	/* Re-sync: write the new frame into RED RAM too, so the controller's
 	 * internal "previous" matches reality for the next partial. Most
 	 * implementations miss this and accumulate diffing errors.
@@ -651,7 +667,19 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 		return err;
 	}
 
+	uint32_t t_memcpy0 = k_uptime_get_32();
+
 	memcpy(data->prev_bw_plane, data->bw_plane, CUSTOM_SSD16XX_BUF_BYTES);
+
+	/* TEMP instrumentation: pre/post = SPI plane writes (2 then 1), wave =
+	 * panel waveform (yields on k_msleep(5)), cpy = the 48 KB prev-plane
+	 * memcpy (pure CPU, no yield). */
+	LOG_INF("BTNTRACE epd partial pre=%u wave=%u post=%u cpy=%u wr_us=%u",
+		t_pre, data->last_refresh_ms, t_memcpy0 - t_post0,
+		k_uptime_get_32() - t_memcpy0,
+		k_cyc_to_us_floor32(g_write_cycles));
+	g_write_cycles = 0;
+
 	data->partial_count++;
 	LOG_DBG("EPD partial refresh complete (%u since full)", data->partial_count);
 	return 0;
@@ -913,6 +941,37 @@ static inline uint8_t quantise_2bpp(uint8_t luma, bool dither,
  *   0 black, 1 dark gray, 2 light gray, 3 white.
  * Bit packing: MSB = leftmost pixel (bit 7 = column 0 within a byte).
  */
+/*
+ * Native 1bpp write: the incoming buffer is already the panel's plane format
+ * (packed, MSB = leftmost pixel). X_ALIGNMENT_WIDTH guarantees full-width
+ * regions, so `height` rows of COLS bytes are contiguous in both source and
+ * destination — the whole conversion is one memcpy per plane.
+ *
+ * In MONO a pixel is either both plane bits set (white) or both clear (black),
+ * so bw and red carry the same bytes. do_partial() drives BW + prev,
+ * do_full() drives BW + RED, so both must be populated.
+ */
+static int custom_ssd16xx_write_mono(const struct device *dev, const uint16_t y,
+				     const struct display_buffer_descriptor *desc,
+				     const uint8_t *src)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	size_t row_bytes = desc->width / 8u;
+	size_t len = row_bytes * desc->height;
+	size_t off = (size_t)y * CUSTOM_SSD16XX_COLS;
+
+	if (row_bytes != CUSTOM_SSD16XX_COLS ||
+	    off + len > CUSTOM_SSD16XX_BUF_BYTES) {
+		LOG_ERR("mono write out of range: y=%u w=%u h=%u",
+			y, desc->width, desc->height);
+		return -EINVAL;
+	}
+
+	memcpy(data->bw_plane + off, src, len);
+	memcpy(data->red_plane + off, src, len);
+	return 0;
+}
+
 static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 				const uint16_t y,
 				const struct display_buffer_descriptor *desc,
@@ -922,62 +981,105 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 	const uint8_t *src = buf;
 	bool dither = data->dither;
 	bool mono = (data->color_mode == CUSTOM_SSD16XX_MONO);
+	uint32_t t_cyc0 = k_cycle_get_32();
 
+	/* Native 1bpp — no conversion needed at all. */
+	if (data->pixel_format == PIXEL_FORMAT_MONO01) {
+		int rc = custom_ssd16xx_write_mono(dev, y, desc, src);
+
+		g_write_cycles += k_cycle_get_32() - t_cyc0;
+		return rc;
+	}
+
+	/* Accumulate a whole destination byte (8 pixels) in a register and touch
+	 * each PSRAM plane once per byte, instead of a read-modify-write per
+	 * pixel per plane. Measured 2026-07-23: ~85 ms vs ~107 ms for a full
+	 * 800x480 frame. The per-pixel g2 computation is unchanged — only the
+	 * store pattern differs. Row-base multiply is hoisted out of the loop. */
 	for (uint16_t row = 0; row < desc->height; row++) {
-		for (uint16_t col = 0; col < desc->width; col++) {
-			uint8_t luma = src[(size_t)row * desc->pitch + col];
+		const uint8_t *srow = src + (size_t)row * desc->pitch;
+		uint16_t py = y + row;
+		size_t row_base = (size_t)py * CUSTOM_SSD16XX_COLS;
+		uint16_t col = 0;
+
+		while (col < desc->width) {
 			uint16_t px = x + col;
-			uint16_t py = y + row;
-			uint8_t g2;
-
-			if (data->color_mode == CUSTOM_SSD16XX_GRAY_MARK) {
-				/* Incremental-gray marking pass: mid-tones become the
-				 * enhance LUT's codes (1 = light gray, 2 = dark gray),
-				 * extremes become 0 = untouched. Bands assume the BW
-				 * baseline was rendered with threshold 64, so every
-				 * coded pixel is currently white on glass. */
-				if (luma < 64u) {
-					g2 = 0x0u;          /* black, leave */
-				} else if (luma < 128u) {
-					g2 = 0x2u;          /* dark gray */
-				} else if (luma < 224u) {
-					g2 = 0x1u;          /* light gray */
-				} else {
-					g2 = 0x0u;          /* white, leave */
-				}
-			} else if (mono) {
-				/* 1bpp, partial-refresh capable. Arbitrary grays are
-				 * ordered-dithered DOWN to pure B/W: the shade comes from
-				 * the dot pattern, not a gray waveform, so dithered UI
-				 * (e.g. the clock) stays partial-capable. Without dither,
-				 * a hard threshold preserves an already-dithered frame's
-				 * 0/255 instead of re-dithering it. */
-				if (dither) {
-					int32_t thr = bayer4[py & 3][px & 3] * 16 + 8; /* 8..248 */
-
-					g2 = (luma > thr) ? 0x3u : 0x0u;
-				} else {
-					g2 = (luma >= data->mono_thr) ? 0x3u : 0x0u;
-				}
-			} else {
-				/* GRAY2: real 4-level waveform path, full refresh only. */
-				g2 = quantise_2bpp(luma, dither, px, py);
-			}
-			uint16_t byte_idx = py * CUSTOM_SSD16XX_COLS + px / 8u;
+			size_t byte_idx = row_base + px / 8u;
 			uint8_t bit_pos = 7u - (px % 8u);
+			/* Pixels remaining in this destination byte. */
+			uint16_t n = MIN((uint16_t)(bit_pos + 1u),
+					 (uint16_t)(desc->width - col));
+			uint8_t mask = 0, bw_bits = 0, red_bits = 0;
 
-			if (g2 & 0x01u) {
-				data->bw_plane[byte_idx] |= BIT(bit_pos);
-			} else {
-				data->bw_plane[byte_idx] &= ~BIT(bit_pos);
+			for (uint16_t i = 0; i < n; i++) {
+				uint8_t luma = srow[col + i];
+				uint16_t ppx = px + i;
+				uint8_t g2;
+
+				if (data->color_mode == CUSTOM_SSD16XX_GRAY_MARK) {
+					/* Incremental-gray marking pass: mid-tones become
+					 * the enhance LUT's codes (1 = light gray, 2 = dark
+					 * gray), extremes become 0 = untouched. Bands assume
+					 * the BW baseline was rendered with threshold 64, so
+					 * every coded pixel is currently white on glass. */
+					if (luma < 64u) {
+						g2 = 0x0u;          /* black, leave */
+					} else if (luma < 128u) {
+						g2 = 0x2u;          /* dark gray */
+					} else if (luma < 224u) {
+						g2 = 0x1u;          /* light gray */
+					} else {
+						g2 = 0x0u;          /* white, leave */
+					}
+				} else if (mono) {
+					/* 1bpp, partial-refresh capable. Arbitrary grays are
+					 * ordered-dithered DOWN to pure B/W: the shade comes
+					 * from the dot pattern, not a gray waveform, so
+					 * dithered UI (e.g. the clock) stays partial-capable.
+					 * Without dither, a hard threshold preserves an
+					 * already-dithered frame's 0/255 instead of
+					 * re-dithering it. */
+					if (dither) {
+						int32_t thr = bayer4[py & 3][ppx & 3] * 16 + 8; /* 8..248 */
+
+						g2 = (luma > thr) ? 0x3u : 0x0u;
+					} else {
+						g2 = (luma >= data->mono_thr) ? 0x3u : 0x0u;
+					}
+				} else {
+					/* GRAY2: real 4-level waveform, full refresh only. */
+					g2 = quantise_2bpp(luma, dither, ppx, py);
+				}
+
+				/* Leftmost pixel of the byte is the MSB, so successive
+				 * pixels walk the bit position downward. */
+				uint8_t bit = BIT(bit_pos - i);
+
+				mask |= bit;
+				if (g2 & 0x01u) {
+					bw_bits |= bit;
+				}
+				if (g2 & 0x02u) {
+					red_bits |= bit;
+				}
 			}
-			if (g2 & 0x02u) {
-				data->red_plane[byte_idx] |= BIT(bit_pos);
+
+			if (mask == 0xFFu) {
+				/* Whole byte covered — no need to read PSRAM first. */
+				data->bw_plane[byte_idx]  = bw_bits;
+				data->red_plane[byte_idx] = red_bits;
 			} else {
-				data->red_plane[byte_idx] &= ~BIT(bit_pos);
+				data->bw_plane[byte_idx] =
+					(uint8_t)((data->bw_plane[byte_idx] & ~mask) | bw_bits);
+				data->red_plane[byte_idx] =
+					(uint8_t)((data->red_plane[byte_idx] & ~mask) | red_bits);
 			}
+
+			col += n;
 		}
 	}
+
+	g_write_cycles += k_cycle_get_32() - t_cyc0;
 	return 0;
 }
 
@@ -997,21 +1099,40 @@ static void custom_ssd16xx_get_capabilities(const struct device *dev,
 	memset(caps, 0, sizeof(*caps));
 	caps->x_resolution = config->width;
 	caps->y_resolution = config->height;
-	caps->supported_pixel_formats = PIXEL_FORMAT_L_8;
-	caps->current_pixel_format = PIXEL_FORMAT_L_8;
-	caps->screen_info = SCREEN_INFO_EPD;
+	/* Native 1bpp: the panel plane format IS LVGL's I1 draw-buffer format,
+	 * so nothing has to be converted. MONO01 = bit set is white, matching
+	 * the planes. X_ALIGNMENT_WIDTH makes every write full-width, so a
+	 * region is a contiguous run of 100-byte rows -> write() is a memcpy.
+	 *
+	 * The L8 path below (ordered dithering, GRAY2, GRAY_MARK) is dormant in
+	 * this configuration, not deleted: revive it by advertising
+	 * PIXEL_FORMAT_L_8 here and setting CONFIG_LV_COLOR_DEPTH_8=y. */
+	caps->supported_pixel_formats = PIXEL_FORMAT_MONO01 | PIXEL_FORMAT_L_8;
+	caps->current_pixel_format = ((struct custom_ssd16xx_data *)dev->data)->pixel_format;
+	caps->screen_info = SCREEN_INFO_EPD | SCREEN_INFO_MONO_MSB_FIRST |
+			    SCREEN_INFO_X_ALIGNMENT_WIDTH;
 }
 
 static int custom_ssd16xx_set_pixel_format(const struct device *dev,
 					   const enum display_pixel_format pf)
 {
-	ARG_UNUSED(dev);
-	return pf == PIXEL_FORMAT_L_8 ? 0 : -ENOTSUP;
+	struct custom_ssd16xx_data *data = dev->data;
+
+	if (pf != PIXEL_FORMAT_MONO01 && pf != PIXEL_FORMAT_L_8) {
+		return -ENOTSUP;
+	}
+	data->pixel_format = pf;
+	return 0;
 }
 
 static int custom_ssd16xx_init(const struct device *dev)
 {
 	const struct custom_ssd16xx_config *config = dev->config;
+	struct custom_ssd16xx_data *data = dev->data;
+
+	/* Native 1bpp by default; see get_capabilities() for how to revive the
+	 * dormant L8 gray/dither path. */
+	data->pixel_format = PIXEL_FORMAT_MONO01;
 
 	if (!device_is_ready(config->mipi_dev)) {
 		LOG_ERR("MIPI DBI transport not ready");

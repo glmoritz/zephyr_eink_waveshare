@@ -68,6 +68,7 @@ int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert);
  * its BW baseline with 64 so every mid-tone pixel starts white. */
 int custom_ssd16xx_set_mono_threshold(const struct device *dev, uint8_t thr);
 
+
 /* Default automatic full-refresh floor: number of consecutive partials after
  * which custom_ssd16xx_refresh_partial() forces a full refresh to clear
  * accumulated ghosting.

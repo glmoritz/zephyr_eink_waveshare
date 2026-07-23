@@ -254,12 +254,18 @@ static void on_input(struct input_event *evt, void *user_data)
 		atomic_set(&slot->state, KEY_PRESSED);
 		k_work_reschedule(&slot->long_work, K_MSEC(LONG_PRESS_MS));
 
-		/* Immediate e-ink press feedback is intentionally disabled here.
-		 * Even offloaded to the display thread, the panel update itself is
-		 * a >1 s cosmetic operation that can still stall unrelated work and
-		 * distort input timing. Keep button handling semantic-first; the
-		 * next real frame refresh will naturally clear any stale overlay
-		 * state. */
+		/* Immediate e-ink press feedback. This is a pure latch + sem give:
+		 * it returns at once and the slow panel blit runs on the display
+		 * thread (priority 12, below LLSS at 10 and input at 11), so it can
+		 * neither delay this callback nor preempt the network path.
+		 *
+		 * Starting here — rather than on release — is what makes the blit
+		 * overlap the input HTTP round-trip instead of following it: the
+		 * panel is already painting while do_send_input() is on the wire,
+		 * and the two take roughly the same time. The display loop drops a
+		 * stale feedback request if a real server frame landed meanwhile,
+		 * so the frame always wins the panel. */
+		ui_press_feedback_request(ui_btn_from_keycode(evt->code));
 		return;
 	}
 
@@ -323,6 +329,11 @@ static int shell_btn(const struct shell *sh, size_t argc, char **argv,
 
 	LOG_INF("BTNTRACE shell press_send code=%d t=%u rc=0",
 		(int)code, now);
+
+	/* Same cosmetic latch the physical key-down does, so shell taps exercise
+	 * the real feedback/HTTP overlap. Non-blocking, so the nominal press
+	 * duration below stays honest. */
+	ui_press_feedback_request(ui_btn_from_keycode(code));
 
 	k_msleep(long_press ? (LONG_PRESS_MS + 100) : 50);
 
@@ -1000,18 +1011,18 @@ static void prefetch_pending_strips(void)
 
 	/* Upgrade the per-slot press-feedback variants now that strips may
 	 * be in cache. Bands with no cached strip keep the INVERT variants.
-	 * Same critical section also applies the latest server-side enabled
-	 * masks, overriding the capture-time heuristic for any band the
-	 * server actually advertised. */
-	k_mutex_lock(&lvgl_mutex, K_FOREVER);
-	press_feedback_refresh_strips_locked(latest_top_strip_id,
-					     latest_bottom_strip_id);
-	press_feedback_set_enabled_masks_locked(
-		(uint8_t)(latest_top_enabled_mask & 0xFF),
-		latest_top_enabled_mask >= 0,
-		(uint8_t)(latest_bottom_enabled_mask & 0xFF),
-		latest_bottom_enabled_mask >= 0);
-	k_mutex_unlock(&lvgl_mutex);
+	 * The same update also carries the latest server-side enabled masks,
+	 * overriding the capture-time heuristic for any band the server
+	 * actually advertised.
+	 *
+	 * Latched, not applied here: taking lvgl_mutex on this thread would
+	 * block the whole network state machine behind an in-flight e-ink
+	 * refresh (~0.5 s), re-serialising the HTTP round-trip against the
+	 * panel. The display thread applies it under the lock it already holds. */
+	ui_press_feedback_update_strips(latest_top_strip_id,
+					latest_bottom_strip_id,
+					latest_top_enabled_mask,
+					latest_bottom_enabled_mask);
 }
 
 static enum app_state do_fetch_frame(void)

@@ -48,7 +48,13 @@
 
 		epd0: epd@0 {
 			compatible = "custom,ssd16xx-800x480";
-			mipi-max-frequency = <4000000>;
+			/* A partial pushes THREE 48 KB planes (prev->RED, new->BW,
+			 * then the post-refresh re-sync new->RED) = 144 KB, so the
+			 * clock dominates: 288 ms at 4 MHz, 115 ms at 10, ~29 ms
+			 * here. Vendor + freeink both drive SSD1677 at 40 MHz.
+			 * If images garble, step back down (10 MHz was verified
+			 * clean on this board). */
+			mipi-max-frequency = <40000000>;
 			reg = <0>;
 			status = "okay";
 			width = <800>;
