@@ -247,6 +247,46 @@ static void set_default_iface(struct net_if *iface, const char *reason)
 		net_if_get_by_iface(iface), reason);
 }
 
+/* =========================================================================
+ * STA auto-reconnect
+ *
+ * Without this, a router reboot is terminal: the disconnect event cleared
+ * SYS_FLAG_WIFI_READY and tore down the TLS session, but sta_connect() was
+ * only ever called from the one-shot boot/portal paths, so nothing re-issued
+ * NET_REQUEST_WIFI_CONNECT. The LLSS thread then blocked forever on
+ * SYS_FLAG_WIFI_READY while the UI promised "reconectando...".
+ *
+ * Deliberately retries forever and never falls back to AP mode: a device that
+ * opens a provisioning AP because the WiFi blipped is worse than one that keeps
+ * trying. AP fallback stays where it belongs — first boot with no/bad creds.
+ *
+ * Runs on its own thread rather than the system workqueue because sta_connect()
+ * blocks for up to ~60 s (association + DHCP/SLAAC waits), and it reuses
+ * sta_connect() wholesale so the state transitions, default-iface selection and
+ * IP waits stay in exactly one place.
+ * ========================================================================= */
+
+#define RECONNECT_BASE_S 2U
+#define RECONNECT_MAX_S  60U
+
+/* Credentials cached from the last sta_connect() so the reconnect thread never
+ * has to touch NVS (flash reads need an internal-DRAM destination — see memory
+ * note project_nvs_rtc_buffer_nomem). .bss, not PSRAM. */
+static char sta_ssid[33];
+static char sta_pass[65];
+static bool sta_creds_valid;
+
+static atomic_t sta_link_up = ATOMIC_INIT(0);
+static K_SEM_DEFINE(sem_reconnect, 0, 1);
+
+/* sta_connect() drives shared state (ssid_cur, ip_str, the association/IP
+ * semaphores), so the boot path and the reconnect thread must not run it
+ * concurrently — a disconnect arriving during the boot connect would otherwise
+ * have both in flight at once. */
+static K_MUTEX_DEFINE(sta_connect_mutex);
+
+static int sta_connect(const char *ssid, const char *pass);
+
 static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 				uint64_t mgmt_event, struct net_if *iface)
 {
@@ -256,16 +296,26 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 			(const struct wifi_status *)cb->info;
 		if (st && st->status == 0) {
 			LOG_INF("WiFi STA connected: %s", ssid_cur);
+			atomic_set(&sta_link_up, 1);
 		} else {
 			LOG_WRN("WiFi connection failed: %d",
 				st ? st->status : -1);
+			atomic_set(&sta_link_up, 0);
 		}
 		k_sem_give(&sem_wifi_connected);
 		break;
 	}
 	case NET_EVENT_WIFI_DISCONNECT_RESULT:
 		LOG_WRN("WiFi STA disconnected");
+		atomic_set(&sta_link_up, 0);
 		set_state(WIFI_PROV_DISCONNECTED, ssid_cur);
+		/* Kick the reconnect thread. Only meaningful once we've had a
+		 * successful STA connect (creds cached) and while we're not
+		 * serving the provisioning AP — reconnecting under the portal
+		 * would fight the user configuring it. */
+		if (sta_creds_valid && prov_state != WIFI_PROV_AP_ACTIVE) {
+			k_sem_give(&sem_reconnect);
+		}
 		break;
 	case NET_EVENT_WIFI_AP_ENABLE_RESULT:
 		LOG_INF("WiFi AP enabled: %s", ssid_cur);
@@ -359,6 +409,13 @@ static int sta_connect(const char *ssid, const char *pass)
 
 	strncpy(ssid_cur, ssid, sizeof(ssid_cur) - 1);
 	set_state(WIFI_PROV_CONNECTING, ssid);
+
+	/* Cache for the reconnect thread (see STA auto-reconnect above). */
+	strncpy(sta_ssid, ssid, sizeof(sta_ssid) - 1);
+	sta_ssid[sizeof(sta_ssid) - 1] = '\0';
+	strncpy(sta_pass, pass ? pass : "", sizeof(sta_pass) - 1);
+	sta_pass[sizeof(sta_pass) - 1] = '\0';
+	sta_creds_valid = true;
 
 	k_sem_reset(&sem_wifi_connected);
 	k_sem_reset(&sem_ip_ready);
@@ -457,6 +514,53 @@ static int sta_connect(const char *ssid, const char *pass)
 	set_state(WIFI_PROV_CONNECTED, combined);
 	return 0;
 }
+
+/* Retry until the link is back. Never gives up, never falls back to AP.
+ * Backoff caps at RECONNECT_MAX_S so a long outage (router down overnight)
+ * costs one association attempt a minute instead of a busy loop. */
+static void wifi_reconnect_thread(void *a, void *b, void *c)
+{
+	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+
+	while (true) {
+		k_sem_take(&sem_reconnect, K_FOREVER);
+
+		uint32_t backoff_s = RECONNECT_BASE_S;
+
+		while (!atomic_get(&sta_link_up)) {
+			LOG_WRN("WiFi down — retrying %s in %u s",
+				sta_ssid, backoff_s);
+			k_msleep(backoff_s * 1000U);
+
+			/* The link may have returned on its own while we slept
+			 * (driver-level roam), in which case don't disturb it. */
+			if (atomic_get(&sta_link_up)) {
+				break;
+			}
+
+			/* If the boot path fell back to the provisioning AP while
+			 * we were waiting, stand down — the user is configuring. */
+			if (prov_state == WIFI_PROV_AP_ACTIVE) {
+				LOG_INF("AP mode active — reconnect standing down");
+				break;
+			}
+
+			k_mutex_lock(&sta_connect_mutex, K_FOREVER);
+			int rc = sta_connect(sta_ssid, sta_pass);
+			k_mutex_unlock(&sta_connect_mutex);
+
+			if (rc == 0) {
+				LOG_INF("WiFi reconnected to %s", sta_ssid);
+				break;
+			}
+
+			backoff_s = MIN(backoff_s * 2U, RECONNECT_MAX_S);
+		}
+	}
+}
+
+K_THREAD_DEFINE(wifi_reconnect_tid, 3072, wifi_reconnect_thread,
+		NULL, NULL, NULL, 11, 0, 0);
 
 /* =========================================================================
  * AP mode + DHCP server
@@ -789,7 +893,12 @@ void wifi_prov_start(void)
 
 	if (creds_load(ssid, sizeof(ssid), pass, sizeof(pass))) {
 		LOG_INF("Stored creds SSID=%s, trying STA...", ssid);
-		if (sta_connect(ssid, pass) == 0) {
+
+		k_mutex_lock(&sta_connect_mutex, K_FOREVER);
+		int rc = sta_connect(ssid, pass);
+		k_mutex_unlock(&sta_connect_mutex);
+
+		if (rc == 0) {
 			return;
 		}
 		LOG_WRN("STA failed, falling back to AP");
