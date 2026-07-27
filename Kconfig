@@ -5,7 +5,7 @@ menu "LLSS Client"
 
 config LLSS_SERVER_URL
 	string "LLSS server base URL"
-	default "https://eink.tutu.eng.br:9608/api"
+	default "https://eink.tutu.eng.br/api"
 	help
 	  Base URL of the Low Level Screen Service API, without trailing slash.
 

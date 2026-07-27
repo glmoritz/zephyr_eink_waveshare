@@ -139,26 +139,31 @@ static int parse_server_url(const char *url)
 		}
 		slash = strchr(colon, '/');
 	} else {
-		/* Regular hostname or IPv4 */
+		/* Regular hostname or IPv4: host[:port][/path]; port optional */
 		colon = strchr(p, ':');
 		slash = strchr(p, '/');
 
-		if (!colon || (slash && colon > slash)) {
-			LOG_ERR("LLSS URL missing port");
-			return -EINVAL;
+		/* A ':' is a port separator only when it precedes the path. */
+		const char *host_end;
+
+		if (colon && (!slash || colon < slash)) {
+			host_end = colon;
+		} else {
+			colon = NULL; /* no explicit port -> HTTPS default */
+			host_end = slash ? slash : (p + strlen(p));
 		}
 
-		size_t hlen = colon - p;
+		size_t hlen = host_end - p;
 
-		if (hlen >= sizeof(server_host)) {
+		if (hlen == 0 || hlen >= sizeof(server_host)) {
 			return -EINVAL;
 		}
 		memcpy(server_host, p, hlen);
 		server_host[hlen] = '\0';
 	}
 
-	/* port */
-	server_port = (int32_t)strtol(colon + 1, NULL, 10);
+	/* port: explicit ":port", else default to HTTPS 443 */
+	server_port = colon ? (int32_t)strtol(colon + 1, NULL, 10) : 443;
 
 	/* base path */
 	if (slash) {
