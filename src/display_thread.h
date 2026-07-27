@@ -101,6 +101,18 @@ void ui_log_push(const char *msg);
 void ui_press_feedback_request(enum ui_btn btn);
 
 /**
+ * Drop the press-feedback overlay, returning the button to its normal look.
+ *
+ * The overlay is otherwise only cleared when a new server frame lands, so an
+ * input the server answers with NO_CHANGE (the hold-hint/notice case) — or one
+ * that fails outright — would leave the slot inverted permanently. Call once
+ * the input round-trip has finished and no frame is coming.
+ *
+ * Non-blocking; the display thread does the repaint.
+ */
+void ui_press_feedback_clear(void);
+
+/**
  * Latch newly-prefetched pressed-strip ids + enabled-slot masks for the display
  * thread to apply under @ref lvgl_mutex.
  *

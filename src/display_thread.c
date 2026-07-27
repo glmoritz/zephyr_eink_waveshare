@@ -114,6 +114,11 @@ struct pending_ui_updates {
 	bool notice_pending;
 	bool notice_visible;
 	char notice_text[UI_NOTICE_TEXT_MAX];
+	/* Drop the press-feedback overlay. Needed because the overlay is otherwise
+	 * only cleared by an arriving server frame, so an input answered with
+	 * NO_CHANGE (the hold-hint/notice case) or an outright failure would leave
+	 * the button stuck in its inverted "pressed" state forever. */
+	bool press_clear_pending;
 	/* Pressed-strip variant rebuild, latched by the LLSS thread after a
 	 * prefetch. Applied here (not there) so the network path never blocks on
 	 * lvgl_mutex behind an in-flight panel refresh — that coupling is what
@@ -320,6 +325,11 @@ static bool apply_pending_ui_locked(void)
 		} else {
 			main_status_hide_locked();
 		}
+		need_flush = need_flush || on_main;
+	}
+
+	if (local.press_clear_pending) {
+		press_feedback_hide_locked();
 		need_flush = need_flush || on_main;
 	}
 
@@ -788,6 +798,15 @@ void ui_press_feedback_update_strips(const char *top_id, const char *bot_id,
 	pending_ui.strip_bot_id[sizeof(pending_ui.strip_bot_id) - 1] = '\0';
 	pending_ui.strip_top_mask = top_mask;
 	pending_ui.strip_bot_mask = bot_mask;
+	k_mutex_unlock(&ui_req_mutex);
+
+	k_sem_give(&frame_work_sem);
+}
+
+void ui_press_feedback_clear(void)
+{
+	k_mutex_lock(&ui_req_mutex, K_FOREVER);
+	pending_ui.press_clear_pending = true;
 	k_mutex_unlock(&ui_req_mutex);
 
 	k_sem_give(&frame_work_sem);

@@ -814,11 +814,18 @@ static enum app_state do_authenticate(void)
 	return STATE_AUTHENTICATING;
 }
 
+/*
+ * Send one button event. On every exit that will NOT produce a new frame we
+ * must drop the press-feedback overlay: it is otherwise only cleared when a
+ * frame lands, so a NO_CHANGE answer (the hold-hint/notice case) or a failure
+ * would leave the button stuck looking pressed.
+ */
 static enum app_state do_send_input(const struct button_event *bev)
 {
 	int32_t rc = session_ensure();
 
 	if (rc < 0) {
+		ui_press_feedback_clear();
 		k_msleep(5000);
 		return STATE_POLLING;
 	}
@@ -831,6 +838,7 @@ static enum app_state do_send_input(const struct button_event *bev)
 	session_close_on_net_error(rc);
 
 	if (rc == -EACCES) {
+		ui_press_feedback_clear();
 		return STATE_REFRESHING;
 	}
 	if (rc != 0) {
@@ -838,6 +846,7 @@ static enum app_state do_send_input(const struct button_event *bev)
 		 * (don't read the unparsed response below). */
 		LOG_ERR("send_input error %d", rc);
 		note_server_failure();
+		ui_press_feedback_clear();
 		return STATE_POLLING;
 	}
 
@@ -869,6 +878,11 @@ static enum app_state do_send_input(const struct button_event *bev)
 					 CONFIG_LLSS_MIN_POLL_MS,
 					 CONFIG_LLSS_MAX_POLL_MS);
 	}
+
+	/* No frame is coming (NO_CHANGE / POLL) — un-press the button. The
+	 * NEW_FRAME path above returns early; display_frame_locked() clears the
+	 * overlay there as part of drawing the new frame. */
+	ui_press_feedback_clear();
 	return STATE_POLLING;
 }
 
