@@ -454,6 +454,15 @@ void ui_lvgl_flush(bool dither, enum ui_refresh_ctx ctx)
 		custom_ssd16xx_refresh_partial(disp);
 	}
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	/* Fast drive returns after its first scan(s); the display thread spends
+	 * the rest of the pulse budget between other work. Wake it in case this
+	 * flush ran on another thread (device UI). */
+	if (custom_ssd16xx_fast_pending(disp)) {
+		k_sem_give(&frame_work_sem);
+	}
+#endif
+
 	LOG_INF("BTNTRACE flush lvgl=%u panel=%u ctx=%d",
 		t_lvgl, k_uptime_get_32() - t_panel0, (int)ctx);
 #else
@@ -632,6 +641,21 @@ static void display_frame_locked(uint8_t *slot, size_t bitmap_len,
  * Thread
  * ========================================================================= */
 
+#if defined(CONFIG_LLSS_EPD_FAST_DRIVE) && DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+/* Pulses owed by the fast drive that this thread should spend now (not
+ * while the `epd` harness holds the panel). Unlocked read: a stale answer
+ * costs one loop turn, the step re-checks under lvgl_mutex. */
+static bool fast_reinforce_due(void)
+{
+#ifdef CONFIG_LLSS_EPD_TEST_SHELL
+	if (ui_test_hold_active()) {
+		return false;
+	}
+#endif
+	return custom_ssd16xx_fast_pending(DEVICE_DT_GET(DISPLAY_NODE));
+}
+#endif
+
 static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 {
 	ARG_UNUSED(arg1);
@@ -645,7 +669,24 @@ static void display_thread_fn(void *arg1, void *arg2, void *arg3)
 
 	while (true) {
 		sys_wdt_idle(disp_wdt);
+#if defined(CONFIG_LLSS_EPD_FAST_DRIVE) && DT_HAS_COMPAT_STATUS_OKAY(custom_ssd16xx_800x480)
+		/* Fast drive left pulses owed: unless new work is already waiting,
+		 * spend one more scan and come straight back. New frames/presses
+		 * still win — their submit restarts only the pixels they change. */
+		if (fast_reinforce_due()) {
+			if (k_sem_take(&frame_work_sem, K_NO_WAIT) != 0) {
+				sys_wdt_alive(disp_wdt);
+				k_mutex_lock(&lvgl_mutex, K_FOREVER);
+				custom_ssd16xx_fast_step(DEVICE_DT_GET(DISPLAY_NODE));
+				k_mutex_unlock(&lvgl_mutex);
+				continue;
+			}
+		} else {
+			k_sem_take(&frame_work_sem, K_FOREVER);
+		}
+#else
 		k_sem_take(&frame_work_sem, K_FOREVER);
+#endif
 		sys_wdt_alive(disp_wdt);
 
 		/* Claim the latest mailbox frame into the render slot. */

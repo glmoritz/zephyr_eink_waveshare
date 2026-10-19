@@ -114,6 +114,82 @@ int custom_ssd16xx_set_color_mode(const struct device *dev,
  */
 int custom_ssd16xx_set_dither(const struct device *dev, bool enable);
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+/*
+ * Fast drive: per-pixel pulse engine (port of kuslota/inkboy, after
+ * zephray/paperboy). A changed pixel gets a budget of short one-frame scans
+ * toward its new color instead of one long canned waveform, so it is visibly
+ * moving after the first scan (~one frame) and saturates over the rest.
+ * Pixels that change again mid-budget just restart. Analog rails stay up
+ * between scans unless keep_power is off.
+ */
+struct custom_ssd16xx_fast_cfg {
+	uint8_t black_pulses; /* scans for pixels changing to black, 1..15 */
+	uint8_t white_pulses; /* scans for pixels changing to white, 1..15 */
+	uint8_t frames;       /* drive frames per scan (LUT TP A), 1..15 */
+	uint8_t fr;           /* LUT frame-rate nibble, 0..15 (0x2 = GC rate) */
+	bool vss_frame;       /* append one VSS frame to every scan */
+	bool hold_ending;     /* one all-HOLD scan after the last drive */
+	bool red_skip;        /* send only RED rows whose content changes (relies
+				 * on RED RAM persisting across mode-2 scans,
+				 * i.e. ping-pong off — session entry sets it) */
+	bool keep_power;      /* leave the rails up when idle (else 0x03) */
+	uint8_t sync_scans;   /* scans refresh_partial() runs before returning;
+			       * the caller steps the rest (0 = whole budget) */
+};
+
+struct custom_ssd16xx_fast_stats {
+	uint32_t scans;       /* activations, HOLD ending included */
+	uint32_t first_us;    /* submit start -> first scan done (BUSY low) */
+	uint32_t total_us;    /* submit start -> last scan done */
+	uint32_t plan_us;     /* framebuffer diff + budget assignment */
+	uint32_t sync_us;     /* session entry: 0x21/border/LUT (0 when warm) */
+	uint32_t power_us;    /* analog power-up activation (0 when warm) */
+	uint32_t calc_us;     /* sum: RED mask build + budget decrement */
+	uint32_t spi_us;      /* sum: windowed RAM writes */
+	uint32_t wave_us;     /* sum: activation -> BUSY low */
+	uint32_t wave_max_us;
+	uint32_t rows;        /* RAM rows written, both planes */
+	uint32_t busy_miss;   /* scans whose BUSY never rose */
+	uint16_t y0, y1;      /* framebuffer rows the submit changed */
+};
+
+/* Fallbacks like refresh_partial (non-MONO, no baseline, gray on glass ->
+ * full); otherwise submit + scan until every budget is spent. */
+int custom_ssd16xx_refresh_fast_drive(const struct device *dev);
+
+/* Split form for callers that want to return between scans: submit plans
+ * the framebuffer (new targets restart their budgets, in-flight pixels keep
+ * going); each step runs one scan and returns 1 while work remains, 0 when
+ * idle, <0 on error. */
+int custom_ssd16xx_fast_submit(const struct device *dev);
+int custom_ssd16xx_fast_step(const struct device *dev);
+bool custom_ssd16xx_fast_pending(const struct device *dev);
+
+/* Finish any owed HOLD scan, then drop the analog rails (0x22=0x03). */
+int custom_ssd16xx_fast_power_off(const struct device *dev);
+
+/* Route custom_ssd16xx_refresh_partial() through the engine (on at boot):
+ * submit, run cfg.sync_scans scans, return. While custom_ssd16xx_fast_pending(), the
+ * owner of the panel must keep calling custom_ssd16xx_fast_step(). */
+int custom_ssd16xx_fast_enable(const struct device *dev, bool enable);
+bool custom_ssd16xx_fast_enabled(const struct device *dev);
+
+/* A config change takes effect at the next scan (LUT reload + RAM resync). */
+int custom_ssd16xx_fast_set_cfg(const struct device *dev,
+				const struct custom_ssd16xx_fast_cfg *cfg);
+void custom_ssd16xx_fast_get_cfg(const struct device *dev,
+				 struct custom_ssd16xx_fast_cfg *cfg);
+
+/* Stats of the current (or last) submit. */
+void custom_ssd16xx_fast_get_stats(const struct device *dev,
+				   struct custom_ssd16xx_fast_stats *st);
+
+/* Timing probe: one scan over the controller RAM as it stands (all HOLD
+ * when the engine is idle — nothing moves), returns BUSY time in us. */
+int custom_ssd16xx_fast_test_scan(const struct device *dev, uint32_t *wave_us);
+#endif /* CONFIG_LLSS_EPD_FAST_DRIVE */
+
 #ifdef CONFIG_LLSS_EPD_TEST_SHELL
 /*
  * Waveform test harness (shell `epd` commands). Serialize with the display
@@ -196,6 +272,11 @@ int custom_ssd16xx_test_restore(const struct device *dev);
 /* Copy one row (100 bytes) of the BW plane into out. */
 int custom_ssd16xx_test_row(const struct device *dev, uint16_t row,
 			    uint8_t out[100]);
+
+/* Paint a rectangle into both planes: level 0 = black, 3 = white, any
+ * other value inverts it (a press-feedback stand-in). Clipped to the panel. */
+int custom_ssd16xx_test_box(const struct device *dev, uint16_t x, uint16_t y,
+			    uint16_t w, uint16_t h, uint8_t level);
 #endif /* CONFIG_LLSS_EPD_TEST_SHELL */
 
 #endif /* CUSTOM_SSD16XX_H */

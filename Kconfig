@@ -68,6 +68,20 @@ config LLSS_EPD_TEST_SHELL
 	  SSD1677 refresh strategy over the telnet shell. Hardware-only; no-op
 	  on native_sim. See docs/epd/WAVEFORMS.md.
 
+config LLSS_EPD_FAST_DRIVE
+	bool "Per-pixel pulse engine (inkboy-style fast drive)"
+	default y
+	help
+	  Low-latency update path ported from kuslota/inkboy: repeated
+	  one-frame scans of a custom LUT with the analog rails kept up, the
+	  two RAM planes selecting HOLD / toward-black / toward-white per
+	  pixel, and a per-pixel pulse budget so a changed pixel is visibly
+	  moving after the first scan and saturates over the following ones.
+	  Costs 240 KB of SPIRAM (4 bit-sliced budget planes + RED scan
+	  image). On at boot: every partial refresh goes through it (first
+	  scan synchronous, the rest spent by the display thread). Fulls are
+	  unchanged. `epd fmode off` falls back to the OTP partial at runtime.
+
 config LLSS_TOP_STRIP_HEIGHT
 	int "Top button-label strip height (px) reported to server"
 	default 50

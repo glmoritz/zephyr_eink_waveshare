@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -31,6 +32,7 @@
 #include "custom_ssd16xx.h"
 #include "device_ui.h"
 #include "display_thread.h"
+#include "input_events.h"
 
 static const struct device *const epd_dev =
 	DEVICE_DT_GET_ANY(custom_ssd16xx_800x480);
@@ -435,6 +437,486 @@ out:
 	return 0;
 }
 
+static int parse_long(const struct shell *sh, const char *arg, long lo,
+		      long hi, long *out)
+{
+	char *end;
+	long v = strtol(arg, &end, 0);
+
+	if (*end != '\0' || v < lo || v > hi) {
+		shell_error(sh, "'%s' out of range %ld..%ld", arg, lo, hi);
+		return -EINVAL;
+	}
+	*out = v;
+	return 0;
+}
+
+static int cmd_epd_box(const struct shell *sh, size_t argc, char **argv)
+{
+	long v[4];
+	uint8_t level = 1; /* invert */
+
+	for (int i = 0; i < 4; i++) {
+		if (parse_long(sh, argv[1 + i], 0, i % 2 ? 480 : 800, &v[i])) {
+			return -EINVAL;
+		}
+	}
+	if (argc > 5) {
+		if (strcmp(argv[5], "black") == 0) {
+			level = 0;
+		} else if (strcmp(argv[5], "white") == 0) {
+			level = 3;
+		} else if (strcmp(argv[5], "invert") != 0) {
+			shell_error(sh, "fill must be black|white|invert");
+			return -EINVAL;
+		}
+	}
+
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	custom_ssd16xx_test_box(epd_dev, v[0], v[1], v[2], v[3], level);
+	k_mutex_unlock(&lvgl_mutex);
+	shell_print(sh, "box %ldx%ld at (%ld,%ld) in framebuffer", v[2], v[3],
+		    v[0], v[1]);
+	return 0;
+}
+
+/* Cosmetic press feedback only (the strip invert a key-down shows): nothing
+ * is sent to the server, so it is safe to time against a live session. */
+static int cmd_epd_press(const struct shell *sh, size_t argc, char **argv)
+{
+	if (strcmp(argv[1], "clear") == 0) {
+		ui_press_feedback_clear();
+		shell_print(sh, "press feedback cleared");
+		return 0;
+	}
+
+	enum ui_btn btn = ui_btn_from_name(argv[1]);
+
+	if (btn == UI_BTN_NONE) {
+		shell_error(sh, "unknown button '%s' (1..8, ENTER, ESC, ...)", argv[1]);
+		return -EINVAL;
+	}
+	ui_press_feedback_request(btn);
+	shell_print(sh, "press feedback for %s requested (local only)", argv[1]);
+	return 0;
+}
+
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+#define US_MS(us) (us) / 1000U, ((us) % 1000U) / 10U
+
+static void print_fast_stats(const struct shell *sh, const char *label)
+{
+	struct custom_ssd16xx_fast_stats st;
+
+	custom_ssd16xx_fast_get_stats(epd_dev, &st);
+	shell_print(sh, "%s: scans=%u first=%u.%02u ms total=%u.%02u ms rows %u..%u",
+		    label, st.scans, US_MS(st.first_us), US_MS(st.total_us),
+		    st.y0, st.y1);
+	shell_print(sh, "  plan=%u sync=%u power=%u calc=%u spi=%u (%u rows) "
+		    "wave=%u (max %u/scan) us%s",
+		    st.plan_us, st.sync_us, st.power_us, st.calc_us, st.spi_us,
+		    st.rows, st.wave_us, st.wave_max_us,
+		    st.busy_miss ? "  BUSY-MISS!" : "");
+}
+
+static void print_fast_cfg(const struct shell *sh)
+{
+	struct custom_ssd16xx_fast_cfg c;
+
+	custom_ssd16xx_fast_get_cfg(epd_dev, &c);
+	shell_print(sh, "fast cfg: k=%u w=%u n=%u fr=%u vss=%d hold=%d rskip=%d "
+		    "pwr=%d s=%u  fmode=%s", c.black_pulses, c.white_pulses,
+		    c.frames, c.fr, c.vss_frame, c.hold_ending, c.red_skip,
+		    c.keep_power, c.sync_scans,
+		    custom_ssd16xx_fast_enabled(epd_dev) ? "on" : "off");
+}
+
+/* epd fcfg [k=N] [w=N] [n=N] [fr=N] [vss=0|1] [hold=0|1] [rskip=0|1] [pwr=0|1]
+ *           [s=N]  (s = scans refresh_partial runs before returning, 0 = all) */
+static int cmd_epd_fcfg(const struct shell *sh, size_t argc, char **argv)
+{
+	struct custom_ssd16xx_fast_cfg c;
+
+	custom_ssd16xx_fast_get_cfg(epd_dev, &c);
+	for (size_t i = 1; i < argc; i++) {
+		char *eq = strchr(argv[i], '=');
+		long v;
+
+		if (!eq || parse_long(sh, eq + 1, 0, 15, &v)) {
+			shell_error(sh, "expected key=value, got '%s'", argv[i]);
+			return -EINVAL;
+		}
+		*eq = '\0';
+		if (strcmp(argv[i], "k") == 0) {
+			c.black_pulses = v;
+		} else if (strcmp(argv[i], "w") == 0) {
+			c.white_pulses = v;
+		} else if (strcmp(argv[i], "n") == 0) {
+			c.frames = v;
+		} else if (strcmp(argv[i], "fr") == 0) {
+			c.fr = v;
+		} else if (strcmp(argv[i], "vss") == 0) {
+			c.vss_frame = v != 0;
+		} else if (strcmp(argv[i], "hold") == 0) {
+			c.hold_ending = v != 0;
+		} else if (strcmp(argv[i], "rskip") == 0) {
+			c.red_skip = v != 0;
+		} else if (strcmp(argv[i], "pwr") == 0) {
+			c.keep_power = v != 0;
+		} else if (strcmp(argv[i], "s") == 0) {
+			c.sync_scans = v;
+		} else {
+			shell_error(sh, "unknown key '%s'", argv[i]);
+			return -EINVAL;
+		}
+	}
+	if (argc > 1) {
+		k_mutex_lock(&lvgl_mutex, K_FOREVER);
+		int err = custom_ssd16xx_fast_set_cfg(epd_dev, &c);
+
+		k_mutex_unlock(&lvgl_mutex);
+		if (err) {
+			shell_error(sh, "rejected (pulses/n 1..15, fr 0..15)");
+			return err;
+		}
+	}
+	print_fast_cfg(sh);
+	return 0;
+}
+
+static int cmd_epd_fstat(const struct shell *sh, size_t argc, char **argv)
+{
+	print_fast_cfg(sh);
+	print_fast_stats(sh, custom_ssd16xx_fast_pending(epd_dev) ?
+			 "last submit (still driving)" : "last submit");
+	return 0;
+}
+
+static int cmd_epd_fdrive(const struct shell *sh, size_t argc, char **argv)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_refresh_fast_drive(epd_dev);
+
+	k_mutex_unlock(&lvgl_mutex);
+	if (err) {
+		shell_error(sh, "fast drive failed: %d", err);
+		return err;
+	}
+	print_fast_stats(sh, "fast");
+	return 0;
+}
+
+/* Time bare scans: with the engine idle every pixel is on a HOLD row, so
+ * nothing on glass moves — pure frame + activation overhead. */
+static int fast_time_scans(const struct shell *sh, long count, uint32_t *avg)
+{
+	uint32_t sum = 0, mn = UINT32_MAX, mx = 0;
+
+	for (long i = 0; i < count; i++) {
+		uint32_t us;
+
+		k_mutex_lock(&lvgl_mutex, K_FOREVER);
+		int err = custom_ssd16xx_fast_test_scan(epd_dev, &us);
+
+		k_mutex_unlock(&lvgl_mutex);
+		if (err) {
+			shell_error(sh, "scan failed: %d", err);
+			return err;
+		}
+		/* The first scan of a session carries the RAM resync. */
+		if (i == 0 && count > 1) {
+			continue;
+		}
+		sum += us;
+		mn = MIN(mn, us);
+		mx = MAX(mx, us);
+	}
+	*avg = sum / (count > 1 ? count - 1 : 1);
+	shell_print(sh, "  scan wave: min %u avg %u max %u us", mn, *avg, mx);
+	return 0;
+}
+
+static int cmd_epd_fscan(const struct shell *sh, size_t argc, char **argv)
+{
+	long count = 6;
+	uint32_t avg;
+
+	if (argc > 1 && parse_long(sh, argv[1], 1, 100, &count)) {
+		return -EINVAL;
+	}
+	print_fast_cfg(sh);
+	return fast_time_scans(sh, count, &avg);
+}
+
+/* Frame time per LUT frame-rate nibble, measured on all-HOLD scans. */
+static int cmd_epd_fsweep(const struct shell *sh, size_t argc, char **argv)
+{
+	static const uint8_t frs[] = { 0x0, 0x1, 0x2, 0x3, 0x4, 0x6, 0x8, 0xC, 0xF };
+	struct custom_ssd16xx_fast_cfg c0, c;
+	bool was_hold = ui_test_hold_active();
+	int err = 0;
+
+	ui_test_hold(true);
+	custom_ssd16xx_fast_get_cfg(epd_dev, &c0);
+	for (size_t i = 0; i < ARRAY_SIZE(frs) && err == 0; i++) {
+		for (uint8_t n = 1; n <= 2 && err == 0; n++) {
+			uint32_t avg;
+
+			c = c0;
+			c.fr = frs[i];
+			c.frames = n;
+			c.vss_frame = false;
+			custom_ssd16xx_fast_set_cfg(epd_dev, &c);
+			shell_print(sh, "fr=0x%X frames=%u:", frs[i], n);
+			err = fast_time_scans(sh, 4, &avg);
+		}
+	}
+	custom_ssd16xx_fast_set_cfg(epd_dev, &c0);
+	ui_test_hold(was_hold);
+	return err;
+}
+
+static int cmd_epd_fpoff(const struct shell *sh, size_t argc, char **argv)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_fast_power_off(epd_dev);
+
+	k_mutex_unlock(&lvgl_mutex);
+	if (err) {
+		shell_error(sh, "power off failed: %d", err);
+		return err;
+	}
+	shell_print(sh, "analog rails off");
+	return 0;
+}
+
+static int cmd_epd_fmode(const struct shell *sh, size_t argc, char **argv)
+{
+	if (strcmp(argv[1], "on") == 0) {
+		custom_ssd16xx_fast_enable(epd_dev, true);
+	} else if (strcmp(argv[1], "off") == 0) {
+		k_mutex_lock(&lvgl_mutex, K_FOREVER);
+		custom_ssd16xx_fast_enable(epd_dev, false);
+		custom_ssd16xx_fast_power_off(epd_dev);
+		k_mutex_unlock(&lvgl_mutex);
+	} else {
+		shell_error(sh, "usage: epd fmode on|off");
+		return -EINVAL;
+	}
+	print_fast_cfg(sh);
+	return 0;
+}
+
+struct bench_acc {
+	uint32_t n, mn, mx;
+	uint64_t sum;
+};
+
+static void acc_add(struct bench_acc *a, uint32_t us)
+{
+	a->mn = a->n ? MIN(a->mn, us) : us;
+	a->mx = a->n ? MAX(a->mx, us) : us;
+	a->sum += us;
+	a->n++;
+}
+
+static void acc_print(const struct shell *sh, const char *label,
+		      const struct bench_acc *a)
+{
+	uint32_t avg = a->n ? (uint32_t)(a->sum / a->n) : 0;
+
+	shell_print(sh, "  %-34s n=%2u  min %4u.%02u  avg %4u.%02u  max %4u.%02u ms",
+		    label, a->n, US_MS(a->mn), US_MS(avg), US_MS(a->mx));
+}
+
+static int bench_fill_full(enum custom_ssd16xx_test_pattern pat)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_test_fill(epd_dev, pat);
+
+	if (err == 0) {
+		err = custom_ssd16xx_refresh_full(epd_dev);
+	}
+	k_mutex_unlock(&lvgl_mutex);
+	return err;
+}
+
+static void bench_box(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	custom_ssd16xx_test_box(epd_dev, x, y, w, h, 1);
+	k_mutex_unlock(&lvgl_mutex);
+}
+
+static void bench_fill(enum custom_ssd16xx_test_pattern pat)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	custom_ssd16xx_test_fill(epd_dev, pat);
+	k_mutex_unlock(&lvgl_mutex);
+}
+
+/* One fast drive of the framebuffer; first/total/per-scan into the accs. */
+static int bench_fast(struct bench_acc *first, struct bench_acc *total,
+		      struct bench_acc *scan,
+		      struct custom_ssd16xx_fast_stats *out)
+{
+	struct custom_ssd16xx_fast_stats st;
+
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	int err = custom_ssd16xx_refresh_fast_drive(epd_dev);
+
+	custom_ssd16xx_fast_get_stats(epd_dev, &st);
+	k_mutex_unlock(&lvgl_mutex);
+	if (err) {
+		return err;
+	}
+	if (first) {
+		acc_add(first, st.first_us);
+	}
+	if (total) {
+		acc_add(total, st.total_us);
+	}
+	if (scan && st.scans) {
+		acc_add(scan, st.wave_us / st.scans);
+	}
+	if (out) {
+		*out = st;
+	}
+	return 0;
+}
+
+/* One OTP partial (pre + waveform + post), timed end to end. */
+static int bench_partial(struct bench_acc *total)
+{
+	k_mutex_lock(&lvgl_mutex, K_FOREVER);
+	uint32_t c0 = k_cycle_get_32();
+	int err = custom_ssd16xx_refresh_partial(epd_dev);
+	uint32_t us = k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+
+	k_mutex_unlock(&lvgl_mutex);
+	if (err == 0) {
+		acc_add(total, us);
+	}
+	return err;
+}
+
+/*
+ * A/B latency bench: inkboy-style fast drive vs the current OTP partial,
+ * on a press-feedback-sized box (invert, then invert back) and on a full
+ * screen change (white <-> checker). Runs at elevated priority so the
+ * numbers are the panel's, not the scheduler's. Ends on a clean full.
+ */
+static int cmd_epd_fbench(const struct shell *sh, size_t argc, char **argv)
+{
+	long iters = 5, bw = 200, bh = 64;
+	struct bench_acc f_first = {0}, f_total = {0}, f_scan = {0};
+	struct bench_acc s_first = {0}, s_total = {0}, p_box = {0}, p_scr = {0};
+	struct custom_ssd16xx_fast_stats cold = {0}, pwr = {0};
+	struct custom_ssd16xx_status st0;
+	struct custom_ssd16xx_fast_cfg cfg;
+	bool was_hold = ui_test_hold_active();
+	bool was_fmode = custom_ssd16xx_fast_enabled(epd_dev);
+	int prio = k_thread_priority_get(k_current_get());
+	int err;
+
+	if ((argc > 1 && parse_long(sh, argv[1], 1, 50, &iters)) ||
+	    (argc > 2 && parse_long(sh, argv[2], 8, 800, &bw)) ||
+	    (argc > 3 && parse_long(sh, argv[3], 8, 480, &bh))) {
+		return -EINVAL;
+	}
+
+	uint16_t bx = 40, by = 480 - 40 - bh;
+
+	ui_test_hold(true);
+	custom_ssd16xx_get_status(epd_dev, &st0);
+	custom_ssd16xx_set_full_refresh_interval(epd_dev, 0);
+	custom_ssd16xx_fast_enable(epd_dev, false);
+	k_thread_priority_set(k_current_get(), K_PRIO_PREEMPT(5));
+	print_fast_cfg(sh);
+	shell_print(sh, "fbench: %ld iters, box %ldx%ld at (%u,%u)", iters, bw,
+		    bh, bx, by);
+
+	/* Fast drive, box. The first drive carries session entry. */
+	err = bench_fill_full(CUSTOM_SSD16XX_PAT_WHITE);
+	bench_box(bx, by, bw, bh);
+	err = err ? err : bench_fast(NULL, NULL, NULL, &cold);
+	bench_box(bx, by, bw, bh);
+	err = err ? err : bench_fast(NULL, NULL, NULL, NULL);
+	for (long i = 0; i < iters && err == 0; i++) {
+		bench_box(bx, by, bw, bh);
+		err = bench_fast(&f_first, &f_total, &f_scan, NULL);
+		bench_box(bx, by, bw, bh);
+		err = err ? err : bench_fast(&f_first, &f_total, &f_scan, NULL);
+	}
+	shell_print(sh, "fast box done");
+
+	/* Rails dropped: what a press after an idle power-down costs. */
+	if (err == 0) {
+		k_mutex_lock(&lvgl_mutex, K_FOREVER);
+		err = custom_ssd16xx_fast_power_off(epd_dev);
+		k_mutex_unlock(&lvgl_mutex);
+		bench_box(bx, by, bw, bh);
+		err = err ? err : bench_fast(NULL, NULL, NULL, &pwr);
+		bench_box(bx, by, bw, bh);
+		err = err ? err : bench_fast(NULL, NULL, NULL, NULL);
+	}
+
+	/* Fast drive, whole screen. */
+	for (int i = 0; i < 2 && err == 0; i++) {
+		bench_fill(CUSTOM_SSD16XX_PAT_CHECKER);
+		err = bench_fast(&s_first, &s_total, NULL, NULL);
+		bench_fill(CUSTOM_SSD16XX_PAT_WHITE);
+		err = err ? err : bench_fast(&s_first, &s_total, NULL, NULL);
+	}
+	shell_print(sh, "fast full-screen done");
+
+	/* OTP partial (today's path), same changes from a clean baseline. */
+	err = err ? err : bench_fill_full(CUSTOM_SSD16XX_PAT_WHITE);
+	for (long i = 0; i < iters && err == 0; i++) {
+		bench_box(bx, by, bw, bh);
+		err = bench_partial(&p_box);
+		bench_box(bx, by, bw, bh);
+		err = err ? err : bench_partial(&p_box);
+	}
+	for (int i = 0; i < 2 && err == 0; i++) {
+		bench_fill(CUSTOM_SSD16XX_PAT_CHECKER);
+		err = bench_partial(&p_scr);
+		bench_fill(CUSTOM_SSD16XX_PAT_WHITE);
+		err = err ? err : bench_partial(&p_scr);
+	}
+	shell_print(sh, "OTP partial done");
+
+	/* Leave a clean panel behind. */
+	err = err ? err : bench_fill_full(CUSTOM_SSD16XX_PAT_WHITE);
+
+	k_thread_priority_set(k_current_get(), prio);
+	custom_ssd16xx_set_full_refresh_interval(epd_dev, st0.full_refresh_interval);
+	custom_ssd16xx_fast_enable(epd_dev, was_fmode);
+	ui_test_hold(was_hold);
+	if (err) {
+		shell_error(sh, "fbench aborted: %d", err);
+		return err;
+	}
+
+	custom_ssd16xx_fast_get_cfg(epd_dev, &cfg);
+	shell_print(sh, "== fbench results (k=%u w=%u n=%u fr=%u) ==",
+		    cfg.black_pulses, cfg.white_pulses, cfg.frames, cfg.fr);
+	acc_print(sh, "fast box: first scan done", &f_first);
+	acc_print(sh, "fast box: all pulses + HOLD", &f_total);
+	acc_print(sh, "fast box: wave per scan", &f_scan);
+	shell_print(sh, "  fast box, cold session: first %u.%02u ms (sync %u, "
+		    "power-up %u, spi %u us)", US_MS(cold.first_us),
+		    cold.sync_us, cold.power_us, cold.spi_us);
+	shell_print(sh, "  fast box, rails were off: first %u.%02u ms (power-up %u us)",
+		    US_MS(pwr.first_us), pwr.power_us);
+	acc_print(sh, "fast full screen: first scan done", &s_first);
+	acc_print(sh, "fast full screen: all pulses + HOLD", &s_total);
+	acc_print(sh, "OTP partial box (complete)", &p_box);
+	acc_print(sh, "OTP partial full screen (complete)", &p_scr);
+	return 0;
+}
+#endif /* CONFIG_LLSS_EPD_FAST_DRIVE */
+
 static int cmd_epd_floor(const struct shell *sh, size_t argc, char **argv)
 {
 	char *end;
@@ -487,6 +969,31 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_epd,
 		      cmd_epd_gauntlet, 1, 1),
 	SHELL_CMD_ARG(floor, NULL, "Set auto full-refresh floor (0 = off)",
 		      cmd_epd_floor, 2, 0),
+	SHELL_CMD_ARG(press, NULL,
+		      "Local press-feedback flash, nothing sent: <btn>|clear",
+		      cmd_epd_press, 2, 0),
+	SHELL_CMD_ARG(box, NULL,
+		      "Paint a rect: <x> <y> <w> <h> [black|white|invert]",
+		      cmd_epd_box, 5, 1),
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	SHELL_CMD_ARG(fcfg, NULL,
+		      "Fast-drive cfg: [k=] [w=] [n=] [fr=] [vss=] [hold=] [rskip=] [pwr=] [s=]",
+		      cmd_epd_fcfg, 1, 9),
+	SHELL_CMD_ARG(fdrive, NULL, "Fast-drive the framebuffer (inkboy engine)",
+		      cmd_epd_fdrive, 1, 0),
+	SHELL_CMD_ARG(fstat, NULL, "Fast-drive cfg + stats of the last submit",
+		      cmd_epd_fstat, 1, 0),
+	SHELL_CMD_ARG(fscan, NULL, "Time bare all-HOLD scans: [count]",
+		      cmd_epd_fscan, 1, 1),
+	SHELL_CMD_ARG(fsweep, NULL, "Scan time per LUT frame-rate nibble",
+		      cmd_epd_fsweep, 1, 0),
+	SHELL_CMD_ARG(fpoff, NULL, "Drop the analog rails", cmd_epd_fpoff, 1, 0),
+	SHELL_CMD_ARG(fmode, NULL, "Route partial refreshes through fast drive: on|off",
+		      cmd_epd_fmode, 2, 0),
+	SHELL_CMD_ARG(fbench, NULL,
+		      "Fast drive vs OTP partial latency: [iters] [box_w] [box_h]",
+		      cmd_epd_fbench, 1, 3),
+#endif
 	SHELL_SUBCMD_SET_END
 );
 

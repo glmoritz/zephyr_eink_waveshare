@@ -188,6 +188,92 @@ static const uint8_t lut_gray_revert[105] = {
 #define CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL CUSTOM_SSD16XX_DEFAULT_FULL_REFRESH_INTERVAL
 #endif
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+/* Fast-drive engine geometry (see the "Fast drive" section below). A pixel's
+ * remaining pulse budget is bit-sliced over FAST_CNT_PLANES planes (budget
+ * <= 15); one uint32_t word covers 32 pixels of a row in every plane. */
+#define FAST_CNT_PLANES    4U
+#define FAST_WORDS         (CUSTOM_SSD16XX_BUF_BYTES / 4U)        /* 12000 */
+#define FAST_WORDS_PER_ROW (CUSTOM_SSD16XX_COLS / 4U)             /* 25 */
+#define FAST_ROW_WORDS     ((CUSTOM_SSD16XX_ROWS + 31U) / 32U)    /* 15 */
+
+#define FAST_SEQ_SCAN      0x0C /* display, mode 2; rails left as they are */
+#define FAST_SEQ_POWER_ON  0xC0 /* clock + analog on, no display */
+#define FAST_SEQ_POWER_OFF 0x03 /* analog + clock off */
+
+/* Glass (box black -> white): 8 white pulses leave a faint mark, 15 erase
+ * it fully; 8 black pulses already give solid black. */
+#define CUSTOM_SSD16XX_FAST_CFG_DEFAULT {                                   \
+	.black_pulses = 8, .white_pulses = 15, .frames = 1, .fr = 0x2,      \
+	.vss_frame = false, .hold_ending = true, .red_skip = true,          \
+	.keep_power = true, .sync_scans = 1,                                \
+}
+
+/* Inclusive framebuffer row range; empty when y0 > y1. */
+struct fast_rows {
+	uint16_t y0;
+	uint16_t y1;
+};
+
+struct custom_ssd16xx_fast {
+	uint32_t *cnt[FAST_CNT_PLANES]; /* bit-sliced pulse budgets */
+	uint32_t *red;                  /* RED RAM image: target ^ driving */
+	struct custom_ssd16xx_fast_cfg cfg;
+	bool enabled;       /* refresh_partial() routes through the engine */
+	bool synced;        /* controller LUT/border/RAM belong to the engine */
+	bool analog_on;
+	bool hold_pending;  /* last drive spent, one all-HOLD scan owed */
+	bool first_pending; /* the submit's first scan is not delivered yet */
+	uint32_t own_updates; /* data->updates after our last activation */
+	struct fast_rows act;               /* rows still holding budget */
+	uint32_t red_rows[FAST_ROW_WORDS];  /* RED RAM rows to rewrite */
+	uint32_t bw_rows[FAST_ROW_WORDS];   /* BW RAM rows to rewrite */
+	uint32_t t_start;   /* k_cycle_get_32() at submit */
+	struct custom_ssd16xx_fast_stats st;
+	/* f->red mirrors the controller's RED RAM (false until the post-sync
+	 * rewrite went out), so red_skip can drop rows that would not change. */
+	bool red_known;
+	/* Framebuffer rows written since the last submit — the only rows the
+	 * submit has to diff. Every bw_plane writer extends it. */
+	struct fast_rows fb_dirty;
+};
+
+static inline void fast_rows_clear(struct fast_rows *r)
+{
+	r->y0 = CUSTOM_SSD16XX_ROWS;
+	r->y1 = 0;
+}
+
+static inline bool fast_rows_empty(const struct fast_rows *r)
+{
+	return r->y0 > r->y1;
+}
+
+static inline void fast_rows_add(struct fast_rows *r, uint16_t y)
+{
+	r->y0 = MIN(r->y0, y);
+	r->y1 = MAX(r->y1, y);
+}
+
+static inline void fast_mark(uint32_t *bits, uint16_t y)
+{
+	bits[y / 32U] |= BIT(y % 32U);
+}
+
+static inline void fast_unmark(uint32_t *bits, uint16_t y)
+{
+	bits[y / 32U] &= ~BIT(y % 32U);
+}
+
+static inline bool fast_marked(const uint32_t *bits, uint16_t y)
+{
+	return (bits[y / 32U] & BIT(y % 32U)) != 0U;
+}
+
+static int custom_ssd16xx_fast_run(const struct device *dev, uint8_t max_scans);
+static void custom_ssd16xx_fast_prewarm(const struct device *dev);
+#endif
+
 struct custom_ssd16xx_config {
 	const struct device *mipi_dev;
 	struct mipi_dbi_config dbi_config;
@@ -229,11 +315,40 @@ struct custom_ssd16xx_data {
 	/* Telemetry for the `epd status` shell command / refresh tuning. */
 	uint32_t last_refresh_ms;
 	uint8_t last_seq;
+	/* Bumped by every master activation alongside last_seq, so the fast
+	 * engine can tell another path drove the panel since its last scan. */
+	uint32_t updates;
+
+	/* Controller RAM Y window spans the whole panel. The fast engine
+	 * narrows it; reset_ram_ptr() widens it back before full-plane writes. */
+	bool ram_window_full;
 
 	/* Active pixel format. MONO01 = native 1bpp (write() is a memcpy);
 	 * L_8 keeps the dormant dither/GRAY2/GRAY_MARK conversion path alive. */
 	enum display_pixel_format pixel_format;
+
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	struct custom_ssd16xx_fast fast;
+#endif
 };
+
+/* Record framebuffer rows [y, y+h) as written (fast-drive diff window). */
+static inline void custom_ssd16xx_note_rows(struct custom_ssd16xx_data *data,
+					    uint16_t y, uint16_t h)
+{
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	if (h == 0U || y >= CUSTOM_SSD16XX_ROWS) {
+		return;
+	}
+	fast_rows_add(&data->fast.fb_dirty, y);
+	fast_rows_add(&data->fast.fb_dirty,
+		      (uint16_t)MIN((uint32_t)y + h - 1U, CUSTOM_SSD16XX_ROWS - 1U));
+#else
+	ARG_UNUSED(data);
+	ARG_UNUSED(y);
+	ARG_UNUSED(h);
+#endif
+}
 
 /* TEMP instrumentation: cycles spent inside write() since the last refresh,
  * to separate our L8->plane conversion from LVGL's own rasterisation. */
@@ -400,8 +515,23 @@ static int custom_ssd16xx_blanking_on(const struct device *dev)
  */
 static int custom_ssd16xx_reset_ram_ptr(const struct device *dev)
 {
-	uint8_t tmp[2];
+	struct custom_ssd16xx_data *data = dev->data;
+	uint8_t tmp[4];
 	int32_t err;
+
+	/* The fast engine narrows the Y window to the rows it rewrites; every
+	 * full-plane writer starts here, so widen it back first. */
+	if (!data->ram_window_full) {
+		tmp[0] = (CUSTOM_SSD16XX_ROWS - 1) & 0xFF;
+		tmp[1] = ((CUSTOM_SSD16XX_ROWS - 1) >> 8) & 0x01;
+		tmp[2] = 0x00;
+		tmp[3] = 0x00;
+		err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_Y_WINDOW, tmp, 4);
+		if (err < 0) {
+			return err;
+		}
+		data->ram_window_full = true;
+	}
 
 	tmp[0] = 0;
 	tmp[1] = 0;
@@ -490,6 +620,7 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 	tmp[0] = 0xF7;
 #endif
 	data->last_seq = tmp[0];
+	data->updates++;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -514,6 +645,9 @@ static int custom_ssd16xx_do_full(const struct device *dev)
 
 	data->in_gray = false;
 	custom_ssd16xx_mark_synced(data);
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	custom_ssd16xx_fast_prewarm(dev);
+#endif
 	return 0;
 }
 
@@ -549,6 +683,7 @@ static int custom_ssd16xx_do_fast(const struct device *dev)
 
 	tmp[0] = 0xD7;
 	data->last_seq = tmp[0];
+	data->updates++;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -570,6 +705,9 @@ static int custom_ssd16xx_do_fast(const struct device *dev)
 	LOG_DBG("EPD fast-full complete (%u ms)", data->last_refresh_ms);
 
 	custom_ssd16xx_mark_synced(data);
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	custom_ssd16xx_fast_prewarm(dev);
+#endif
 	return 0;
 }
 
@@ -617,6 +755,7 @@ static int custom_ssd16xx_do_partial(const struct device *dev)
 	 */
 	tmp[0] = 0xFC;
 	data->last_seq = tmp[0];
+	data->updates++;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -720,6 +859,21 @@ int custom_ssd16xx_refresh_partial(const struct device *dev)
 		return custom_ssd16xx_do_full(dev);
 	}
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	if (data->fast.enabled) {
+		int err = custom_ssd16xx_fast_run(dev, data->fast.cfg.sync_scans);
+		const struct custom_ssd16xx_fast_stats *st = &data->fast.st;
+
+		/* TEMP instrumentation (BTNTRACE), same role as do_partial's.
+		 * total/scans cover only the synchronous part. */
+		LOG_INF("BTNTRACE epd fast first=%u total=%u scans=%u plan=%u "
+			"spi=%u wave=%u rows=%u..%u (us)",
+			st->first_us, st->total_us, st->scans, st->plan_us,
+			st->spi_us, st->wave_us, st->y0, st->y1);
+		return err;
+	}
+#endif
+
 	return custom_ssd16xx_do_partial(dev);
 }
 
@@ -739,6 +893,7 @@ static int custom_ssd16xx_run_lut(const struct device *dev, const uint8_t *lut)
 
 	tmp[0] = 0xCF;
 	data->last_seq = tmp[0];
+	data->updates++;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -861,6 +1016,668 @@ int custom_ssd16xx_refresh_gray(const struct device *dev, bool revert)
 	return 0;
 }
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+/* =========================================================================
+ * Fast drive — per-pixel pulse engine, ported from kuslota/inkboy's SSD1681
+ * "mixed scan" (itself after zephray/paperboy's per-pixel driving).
+ *
+ * Instead of one canned multi-frame waveform per update, the panel is driven
+ * by SCANS: activations of a one-frame custom LUT (mode 2, row =
+ * (RED<<1)|BW), repeated. Per pixel the RAM planes select the row:
+ *   BW  = target image T (prev_bw_plane: what the pixel is heading to)
+ *   RED = T ^ A, A = "pixel still has pulse budget"
+ * so A=0 lands on rows 00/11 = HOLD (VSS, untouched); A=1 with T white on
+ * row 01 = one VSL frame (toward white); A=1 with T black on row 10 = one
+ * VSH1 frame (toward black). Same transition indexing as lut_du_deep.
+ *
+ * A pixel whose target changes gets a budget of N scans for its direction;
+ * every delivered scan spends one pulse of every pixel it drove. A pixel
+ * that changes again mid-budget simply restarts — no waiting for an earlier
+ * waveform to finish. The analog rails stay up between scans (0xC0 once,
+ * then 0x22=0x0C per scan), and RAM writes are Y-windowed to the rows whose
+ * target or drive mask changed, so a scan costs about one panel frame.
+ *
+ * After the last pulse, one all-HOLD scan writes VSS into the storage caps
+ * of the pixels driven last (inkboy's "HOLD ending"): with the rails up and
+ * the gates idle, those caps would otherwise keep pushing on stored charge.
+ *
+ * The engine owns the controller between scans. Any other refresh path
+ * bumps data->updates; the next fast call sees it, drops leftover budgets
+ * (that path already settled the image) and re-enters: LUT reload + every
+ * RAM row rewritten, since stale BW != RED pairs would be driven.
+ * ========================================================================= */
+
+/* 0x37 A..J all zero: spare-VCOM/display-mode bits at reset value, F[6]
+ * (RAM ping-pong for mode 2) off. */
+static const uint8_t fast_display_option[10];
+
+static void fast_build_lut(const struct custom_ssd16xx_fast_cfg *cfg,
+			   uint8_t lut[105])
+{
+	memset(lut, 0, 105);
+	lut[10] = 0x80;                      /* L1 (R=0,BW=1) phase A: VSL  */
+	lut[20] = 0x40;                      /* L2 (R=1,BW=0) phase A: VSH1 */
+	lut[50] = cfg->frames;               /* G0 TP A: drive frames */
+	lut[51] = cfg->vss_frame ? 1U : 0U;  /* G0 TP B: VS 00 = VSS, all rows */
+	memset(&lut[100], (cfg->fr << 4) | cfg->fr, 5);
+}
+
+/* Write framebuffer rows [y0, y1] of one plane through a Y window (entry
+ * mode 0x01: X+, Y-; framebuffer row r is gate address ROWS-1-r). */
+static int fast_write_rows(const struct device *dev, uint8_t cmd,
+			   const uint8_t *plane, uint16_t y0, uint16_t y1)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint16_t ys = CUSTOM_SSD16XX_ROWS - 1U - y0;
+	uint16_t ye = CUSTOM_SSD16XX_ROWS - 1U - y1;
+	uint8_t tmp[4];
+	int32_t err;
+
+	tmp[0] = ys & 0xFF;
+	tmp[1] = (ys >> 8) & 0x01;
+	tmp[2] = ye & 0xFF;
+	tmp[3] = (ye >> 8) & 0x01;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_Y_WINDOW, tmp, 4);
+	if (err < 0) {
+		return err;
+	}
+	data->ram_window_full = false;
+
+	tmp[0] = 0;
+	tmp[1] = 0;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_X_COUNTER, tmp, 2);
+	if (err < 0) {
+		return err;
+	}
+	tmp[0] = ys & 0xFF;
+	tmp[1] = (ys >> 8) & 0x01;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_RAM_Y_COUNTER, tmp, 2);
+	if (err < 0) {
+		return err;
+	}
+
+	return custom_ssd16xx_write_raw(dev, cmd,
+					plane + (size_t)y0 * CUSTOM_SSD16XX_COLS,
+					(size_t)(y1 - y0 + 1U) * CUSTOM_SSD16XX_COLS);
+}
+
+/* Push every marked row of one plane, one window per contiguous run. The
+ * marks are cleared only once all runs went out. */
+static int fast_write_marked(const struct device *dev, uint8_t cmd,
+			     const uint8_t *plane, uint32_t *bits)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint16_t y = 0;
+
+	while (y < CUSTOM_SSD16XX_ROWS) {
+		if (!fast_marked(bits, y)) {
+			y++;
+			continue;
+		}
+
+		uint16_t y0 = y;
+
+		while (y < CUSTOM_SSD16XX_ROWS && fast_marked(bits, y)) {
+			y++;
+		}
+
+		int err = fast_write_rows(dev, cmd, plane, y0, y - 1U);
+
+		if (err < 0) {
+			return err;
+		}
+		data->fast.st.rows += y - y0;
+	}
+	memset(bits, 0, FAST_ROW_WORDS * sizeof(uint32_t));
+	return 0;
+}
+
+/* 0x22=<seq> + master activation, then wait for BUSY with 100 us
+ * resolution (the shared busy_wait polls every 5 ms — a quarter of a scan).
+ * BUSY rises microseconds after 0x20; wait for that edge first so a late
+ * rise can't read as "already done". */
+static int fast_activate(const struct device *dev, uint8_t seq, uint32_t *us)
+{
+	const struct custom_ssd16xx_config *config = dev->config;
+	struct custom_ssd16xx_data *data = dev->data;
+	uint32_t t0, spins = 0;
+	int32_t err, pin;
+
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, &seq, 1);
+	if (err < 0) {
+		return err;
+	}
+	data->last_seq = seq;
+	data->updates++;
+	data->fast.own_updates = data->updates;
+
+	uint32_t c0 = k_cycle_get_32();
+
+	err = custom_ssd16xx_write_raw(dev, SSD16XX_CMD_MASTER_ACTIVATION, NULL, 0);
+	if (err < 0) {
+		return err;
+	}
+
+	while ((pin = gpio_pin_get_dt(&config->busy_gpio)) == 0) {
+		if (++spins > 200U) {
+			/* No rise within ~2 ms: nothing to do (e.g. rails
+			 * already in the requested state). */
+			if (seq == FAST_SEQ_SCAN) {
+				data->fast.st.busy_miss++;
+			}
+			break;
+		}
+		k_busy_wait(10);
+	}
+
+	t0 = k_uptime_get_32();
+	while (pin > 0) {
+		if (k_uptime_get_32() - t0 > CUSTOM_SSD16XX_REFRESH_TIMEOUT_MS) {
+			LOG_ERR("EPD fast 0x%02X: BUSY timeout", seq);
+			return -ETIMEDOUT;
+		}
+		k_usleep(100);
+		pin = gpio_pin_get_dt(&config->busy_gpio);
+	}
+	if (pin < 0) {
+		LOG_ERR("Failed to read BUSY GPIO (%d)", pin);
+		return pin;
+	}
+
+	*us = k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+	return 0;
+}
+
+/* Another refresh path activated the panel since our last scan: its LUT and
+ * RAM layout replaced ours, and it settled the image to the framebuffer —
+ * drop leftover budgets and re-enter on the next scan. */
+static void fast_check_foreign(struct custom_ssd16xx_data *data)
+{
+	struct custom_ssd16xx_fast *f = &data->fast;
+
+	if (data->updates == f->own_updates) {
+		return;
+	}
+	f->own_updates = data->updates;
+	f->synced = false;
+	/* 0xFC (OTP partial) leaves the rails up; the full/LUT paths drop them. */
+	f->analog_on = (data->last_seq & 0x40U) && !(data->last_seq & 0x02U);
+
+	if (!fast_rows_empty(&f->act)) {
+		size_t off = (size_t)f->act.y0 * FAST_WORDS_PER_ROW;
+		size_t len = (size_t)(f->act.y1 - f->act.y0 + 1U) * CUSTOM_SSD16XX_COLS;
+
+		for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+			memset(&f->cnt[i][off], 0, len);
+		}
+	}
+	fast_rows_clear(&f->act);
+	f->hold_pending = false;
+	f->first_pending = false;
+}
+
+/* Session entry: normal RAM roles, no border drive, our LUT; then every RAM
+ * row is rewritten — whatever the last path left (gray codes, a test's
+ * planes) would be driven by this LUT wherever BW != RED. */
+static int fast_sync(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+	uint8_t lut[105];
+	uint8_t tmp[2];
+	int32_t err;
+
+	tmp[0] = 0x00;
+	tmp[1] = 0x00;
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL1, tmp, 2);
+	if (err < 0) {
+		return err;
+	}
+
+	tmp[0] = 0x80; /* partial border */
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_BORDER_WAVEFORM, tmp, 1);
+	if (err < 0) {
+		return err;
+	}
+
+	/* Display option F[6] = 0: no RAM ping-pong in mode 2. This panel comes
+	 * up with it on (the vendor partial writes only 0x24 and relies on it),
+	 * and then scans after the first don't see the planes as written: a
+	 * box flickers faintly and ends white. Off, it drives solid black
+	 * (glass-tested). The scans need RAM exactly as written — inkboy does
+	 * the same. */
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISPLAY_OPTION,
+				       fast_display_option,
+				       sizeof(fast_display_option));
+	if (err < 0) {
+		return err;
+	}
+
+	fast_build_lut(&f->cfg, lut);
+	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_WRITE_LUT, lut, sizeof(lut));
+	if (err < 0) {
+		return err;
+	}
+
+	memset(f->red_rows, 0xFF, sizeof(f->red_rows));
+	memset(f->bw_rows, 0xFF, sizeof(f->bw_rows));
+	f->red_known = false;
+	f->synced = true;
+	return 0;
+}
+
+/* RED image for every marked row: T ^ A, A read from the budgets. With
+ * red_skip, a row whose image matches what the RAM already holds is
+ * unmarked: e.g. a fresh change's first scan needs RED = old image, which
+ * is exactly what the previous drive left there. */
+static void fast_build_red(struct custom_ssd16xx_data *data)
+{
+	struct custom_ssd16xx_fast *f = &data->fast;
+	const uint32_t *tw = (const uint32_t *)data->prev_bw_plane;
+	bool cmp = f->cfg.red_skip && f->red_known;
+
+	for (uint16_t y = 0; y < CUSTOM_SSD16XX_ROWS; y++) {
+		if (!fast_marked(f->red_rows, y)) {
+			continue;
+		}
+
+		size_t base = (size_t)y * FAST_WORDS_PER_ROW;
+		bool live = (y >= f->act.y0 && y <= f->act.y1);
+		bool same = true;
+
+		for (size_t w = base; w < base + FAST_WORDS_PER_ROW; w++) {
+			uint32_t a = 0;
+
+			if (live) {
+				for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+					a |= f->cnt[i][w];
+				}
+			}
+
+			uint32_t r = tw[w] ^ a;
+
+			same = same && (f->red[w] == r);
+			f->red[w] = r;
+		}
+		if (cmp && same) {
+			fast_unmark(f->red_rows, y);
+		}
+	}
+}
+
+/* A scan was delivered: every driving pixel spent one pulse (bit-sliced
+ * subtract-one, borrow rippling through the planes). Rows whose drive mask
+ * changed get their RED row rewritten before the next scan. */
+static void fast_decrement(struct custom_ssd16xx_data *data)
+{
+	struct custom_ssd16xx_fast *f = &data->fast;
+	struct fast_rows live;
+
+	fast_rows_clear(&live);
+	for (uint16_t y = f->act.y0; y <= f->act.y1; y++) {
+		size_t base = (size_t)y * FAST_WORDS_PER_ROW;
+		bool row_live = false;
+		bool row_changed = false;
+
+		for (size_t w = base; w < base + FAST_WORDS_PER_ROW; w++) {
+			uint32_t a = 0;
+
+			for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+				a |= f->cnt[i][w];
+			}
+			if (a == 0U) {
+				continue;
+			}
+
+			uint32_t borrow = a;
+			uint32_t na = 0;
+
+			for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+				uint32_t p = f->cnt[i][w];
+				uint32_t np = p ^ borrow;
+
+				borrow &= ~p;
+				f->cnt[i][w] = np;
+				na |= np;
+			}
+			row_changed |= (na != a);
+			row_live |= (na != 0U);
+		}
+		if (row_changed) {
+			fast_mark(f->red_rows, y);
+		}
+		if (row_live) {
+			fast_rows_add(&live, y);
+		}
+	}
+	f->act = live;
+}
+
+/* Rails up + controller RAM matching the engine (no activation). */
+static int fast_prepare(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+	uint32_t c0 = k_cycle_get_32();
+	uint32_t us;
+	int32_t err;
+
+	if (!f->synced) {
+		err = fast_sync(dev);
+		if (err < 0) {
+			return err;
+		}
+		f->st.sync_us += k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+	}
+	if (!f->analog_on) {
+		err = fast_activate(dev, FAST_SEQ_POWER_ON, &us);
+		if (err < 0) {
+			return err;
+		}
+		f->analog_on = true;
+		f->st.power_us += us;
+	}
+
+	c0 = k_cycle_get_32();
+	if (!f->cfg.red_skip) {
+		for (uint16_t y = f->act.y0; y <= f->act.y1; y++) {
+			fast_mark(f->red_rows, y);
+		}
+	}
+	fast_build_red(data);
+
+	uint32_t c1 = k_cycle_get_32();
+
+	f->st.calc_us += k_cyc_to_us_floor32(c1 - c0);
+
+	err = fast_write_marked(dev, SSD16XX_CMD_WRITE_BW_RAM,
+				data->prev_bw_plane, f->bw_rows);
+	if (err < 0) {
+		return err;
+	}
+	err = fast_write_marked(dev, SSD16XX_CMD_WRITE_RED_RAM,
+				(const uint8_t *)f->red, f->red_rows);
+	if (err < 0) {
+		return err;
+	}
+	f->red_known = true;
+	f->st.spi_us += k_cyc_to_us_floor32(k_cycle_get_32() - c1);
+	return 0;
+}
+
+/* A full just dropped the rails. In fast mode, re-enter now — rails up, LUT
+ * and RAM resynced (~83 ms + ~34 ms) — while nobody waits, instead of on the
+ * next press. Stats keep describing the last submit. */
+static void custom_ssd16xx_fast_prewarm(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+
+	if (!f->enabled || !f->cfg.keep_power) {
+		return;
+	}
+
+	struct custom_ssd16xx_fast_stats keep = f->st;
+
+	fast_check_foreign(data);
+	if (fast_prepare(dev) < 0) {
+		f->synced = false; /* retried by the next scan */
+	}
+	f->st = keep;
+}
+
+bool custom_ssd16xx_fast_pending(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	return !fast_rows_empty(&data->fast.act) || data->fast.hold_pending;
+}
+
+int custom_ssd16xx_fast_submit(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+	const uint32_t *nw = (const uint32_t *)data->bw_plane;
+	uint32_t *tw = (uint32_t *)data->prev_bw_plane;
+	uint32_t kfill[FAST_CNT_PLANES], wfill[FAST_CNT_PLANES];
+	uint32_t c0 = k_cycle_get_32();
+	struct fast_rows hit;
+
+	fast_check_foreign(data);
+
+	for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+		kfill[i] = ((f->cfg.black_pulses >> i) & 1U) ? UINT32_MAX : 0U;
+		wfill[i] = ((f->cfg.white_pulses >> i) & 1U) ? UINT32_MAX : 0U;
+	}
+
+	/* New target = framebuffer. Changed pixels (re)start their budget for
+	 * the new direction; unchanged ones keep whatever they had left. */
+	fast_rows_clear(&hit);
+	for (uint16_t y = f->fb_dirty.y0; y <= f->fb_dirty.y1; y++) {
+		size_t base = (size_t)y * FAST_WORDS_PER_ROW;
+		bool row_hit = false;
+
+		for (size_t w = base; w < base + FAST_WORDS_PER_ROW; w++) {
+			uint32_t t = nw[w];
+			uint32_t ch = t ^ tw[w];
+
+			if (ch == 0U) {
+				continue;
+			}
+			row_hit = true;
+			tw[w] = t;
+			for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+				uint32_t want = (t & wfill[i]) | (~t & kfill[i]);
+
+				f->cnt[i][w] = (f->cnt[i][w] & ~ch) | (ch & want);
+			}
+		}
+		if (row_hit) {
+			fast_rows_add(&hit, y);
+			fast_mark(f->red_rows, y);
+			fast_mark(f->bw_rows, y);
+		}
+	}
+	fast_rows_clear(&f->fb_dirty);
+	if (!fast_rows_empty(&hit)) {
+		fast_rows_add(&f->act, hit.y0);
+		fast_rows_add(&f->act, hit.y1);
+	}
+
+	memset(&f->st, 0, sizeof(f->st));
+	f->st.y0 = hit.y0;
+	f->st.y1 = hit.y1;
+	f->st.plan_us = k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+	f->t_start = c0;
+	f->first_pending = !fast_rows_empty(&hit);
+	return 0;
+}
+
+int custom_ssd16xx_fast_step(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+	uint32_t us;
+	int32_t err;
+
+	fast_check_foreign(data);
+
+	bool drive = !fast_rows_empty(&f->act);
+
+	if (!drive && !f->hold_pending) {
+		return 0;
+	}
+
+	err = fast_prepare(dev);
+	if (err < 0) {
+		goto fail;
+	}
+	err = fast_activate(dev, FAST_SEQ_SCAN, &us);
+	if (err < 0) {
+		goto fail;
+	}
+	f->st.scans++;
+	f->st.wave_us += us;
+	f->st.wave_max_us = MAX(f->st.wave_max_us, us);
+	if (f->first_pending) {
+		f->first_pending = false;
+		f->st.first_us = k_cyc_to_us_floor32(k_cycle_get_32() - f->t_start);
+	}
+
+	uint32_t c0 = k_cycle_get_32();
+
+	if (drive) {
+		fast_decrement(data);
+	}
+	f->hold_pending = drive && fast_rows_empty(&f->act) && f->cfg.hold_ending;
+	f->st.calc_us += k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+	f->st.total_us = k_cyc_to_us_floor32(k_cycle_get_32() - f->t_start);
+
+	if (custom_ssd16xx_fast_pending(dev)) {
+		return 1;
+	}
+	if (!f->cfg.keep_power) {
+		err = fast_activate(dev, FAST_SEQ_POWER_OFF, &us);
+		if (err < 0) {
+			goto fail;
+		}
+		f->analog_on = false;
+	}
+	return 0;
+
+fail:
+	/* Controller RAM/LUT state unknown: full re-entry on the next scan;
+	 * budgets were not spent, so the retry delivers the same pulse. */
+	f->synced = false;
+	return err;
+}
+
+int custom_ssd16xx_fast_power_off(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	struct custom_ssd16xx_fast *f = &data->fast;
+	uint32_t us;
+	int32_t err;
+
+	fast_check_foreign(data);
+	if (!fast_rows_empty(&f->act)) {
+		return -EBUSY;
+	}
+	if (f->hold_pending) {
+		err = custom_ssd16xx_fast_step(dev);
+		if (err < 0) {
+			return err;
+		}
+	}
+	if (!f->analog_on) {
+		return 0;
+	}
+	err = fast_activate(dev, FAST_SEQ_POWER_OFF, &us);
+	if (err < 0) {
+		return err;
+	}
+	f->analog_on = false;
+	return 0;
+}
+
+/* Submit, then scan until idle or max_scans scans ran (0 = no limit). */
+static int custom_ssd16xx_fast_run(const struct device *dev, uint8_t max_scans)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	int err = custom_ssd16xx_fast_submit(dev);
+	uint32_t n = 0;
+
+	while (err >= 0 && custom_ssd16xx_fast_pending(dev) &&
+	       (max_scans == 0U || n < max_scans)) {
+		err = custom_ssd16xx_fast_step(dev);
+		n++;
+	}
+	if (err < 0) {
+		LOG_ERR("EPD fast drive failed: %d", err);
+		return err;
+	}
+	data->partial_count++;
+	return 0;
+}
+
+int custom_ssd16xx_refresh_fast_drive(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	/* Same preconditions as the fast partial (see refresh_partial). */
+	if (data->color_mode != CUSTOM_SSD16XX_MONO || !data->prev_valid ||
+	    data->in_gray) {
+		return custom_ssd16xx_do_full(dev);
+	}
+	return custom_ssd16xx_fast_run(dev, 0);
+}
+
+int custom_ssd16xx_fast_test_scan(const struct device *dev, uint32_t *wave_us)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	int32_t err;
+
+	fast_check_foreign(data);
+	if (custom_ssd16xx_fast_pending(dev)) {
+		return -EBUSY;
+	}
+	err = fast_prepare(dev);
+	if (err == 0) {
+		err = fast_activate(dev, FAST_SEQ_SCAN, wave_us);
+	}
+	if (err < 0) {
+		data->fast.synced = false;
+	}
+	return err;
+}
+
+int custom_ssd16xx_fast_enable(const struct device *dev, bool enable)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	data->fast.enabled = enable;
+	return 0;
+}
+
+bool custom_ssd16xx_fast_enabled(const struct device *dev)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	return data->fast.enabled;
+}
+
+int custom_ssd16xx_fast_set_cfg(const struct device *dev,
+				const struct custom_ssd16xx_fast_cfg *cfg)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	if (cfg->black_pulses < 1U || cfg->black_pulses > 15U ||
+	    cfg->white_pulses < 1U || cfg->white_pulses > 15U ||
+	    cfg->frames < 1U || cfg->frames > 15U || cfg->fr > 15U) {
+		return -EINVAL;
+	}
+	data->fast.cfg = *cfg;
+	data->fast.synced = false; /* reload the LUT before the next scan */
+	return 0;
+}
+
+void custom_ssd16xx_fast_get_cfg(const struct device *dev,
+				 struct custom_ssd16xx_fast_cfg *cfg)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	*cfg = data->fast.cfg;
+}
+
+void custom_ssd16xx_fast_get_stats(const struct device *dev,
+				   struct custom_ssd16xx_fast_stats *st)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+
+	*st = data->fast.st;
+}
+#endif /* CONFIG_LLSS_EPD_FAST_DRIVE */
+
 int custom_ssd16xx_set_mono_threshold(const struct device *dev, uint8_t thr)
 {
 	struct custom_ssd16xx_data *data = dev->data;
@@ -982,6 +1799,8 @@ static int custom_ssd16xx_write(const struct device *dev, const uint16_t x,
 	bool dither = data->dither;
 	bool mono = (data->color_mode == CUSTOM_SSD16XX_MONO);
 	uint32_t t_cyc0 = k_cycle_get_32();
+
+	custom_ssd16xx_note_rows(data, y, desc->height);
 
 	/* Native 1bpp — no conversion needed at all. */
 	if (data->pixel_format == PIXEL_FORMAT_MONO01) {
@@ -1149,6 +1968,14 @@ static int custom_ssd16xx_init(const struct device *dev)
 		return -EIO;
 	}
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+	/* A submit only rewrites the budgets of changed pixels: everything
+	 * else must start at zero, and SPIRAM .bss carries no such promise. */
+	for (size_t i = 0; i < FAST_CNT_PLANES; i++) {
+		memset(data->fast.cnt[i], 0, CUSTOM_SSD16XX_BUF_BYTES);
+	}
+#endif
+
 	return custom_ssd16xx_panel_init(dev);
 }
 
@@ -1177,6 +2004,7 @@ int custom_ssd16xx_test_fill(const struct device *dev,
 {
 	struct custom_ssd16xx_data *data = dev->data;
 
+	custom_ssd16xx_note_rows(data, 0, CUSTOM_SSD16XX_ROWS);
 	switch (pattern) {
 	case CUSTOM_SSD16XX_PAT_WHITE:
 		memset(data->bw_plane, 0xFF, CUSTOM_SSD16XX_BUF_BYTES);
@@ -1310,6 +2138,7 @@ int custom_ssd16xx_test_sequence(const struct device *dev, uint8_t seq,
 
 	tmp[0] = seq;
 	data->last_seq = seq;
+	data->updates++;
 	err = custom_ssd16xx_write_cmd(dev, SSD16XX_CMD_DISP_UPDATE_CTRL2, tmp, 1);
 	if (err < 0) {
 		return err;
@@ -1394,6 +2223,7 @@ int custom_ssd16xx_test_restore(const struct device *dev)
 	}
 	memcpy(data->bw_plane, test_snap_buf, CUSTOM_SSD16XX_BUF_BYTES);
 	memcpy(data->red_plane, test_snap_buf, CUSTOM_SSD16XX_BUF_BYTES);
+	custom_ssd16xx_note_rows(data, 0, CUSTOM_SSD16XX_ROWS);
 	return 0;
 }
 
@@ -1407,6 +2237,29 @@ int custom_ssd16xx_test_row(const struct device *dev, uint16_t row,
 	}
 	memcpy(out, &data->bw_plane[(size_t)row * CUSTOM_SSD16XX_COLS],
 	       CUSTOM_SSD16XX_COLS);
+	return 0;
+}
+
+int custom_ssd16xx_test_box(const struct device *dev, uint16_t x, uint16_t y,
+			    uint16_t w, uint16_t h, uint8_t level)
+{
+	struct custom_ssd16xx_data *data = dev->data;
+	uint16_t x1 = (uint16_t)MIN((uint32_t)x + w, 800U);
+	uint16_t y1 = (uint16_t)MIN((uint32_t)y + h, CUSTOM_SSD16XX_ROWS);
+
+	custom_ssd16xx_note_rows(data, y, h);
+	for (uint16_t py = y; py < y1; py++) {
+		for (uint16_t px = x; px < x1; px++) {
+			uint8_t lv = level;
+
+			if (lv != 0U && lv != 3U) {
+				size_t byte_idx = (size_t)py * CUSTOM_SSD16XX_COLS + px / 8u;
+
+				lv = (data->bw_plane[byte_idx] & BIT(7u - (px % 8u))) ? 0u : 3u;
+			}
+			test_set_px(data, px, py, lv);
+		}
+	}
 	return 0;
 }
 
@@ -1433,14 +2286,37 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 	.set_pixel_format = custom_ssd16xx_set_pixel_format,
 };
 
+#ifdef CONFIG_LLSS_EPD_FAST_DRIVE
+#define CUSTOM_SSD16XX_FAST_BUFS(inst) \
+	static uint32_t custom_ssd16xx_fcnt_##inst[FAST_CNT_PLANES][FAST_WORDS] \
+		__attribute__((section(".ext_ram.bss"))); \
+	static uint32_t custom_ssd16xx_fred_##inst[FAST_WORDS] \
+		__attribute__((section(".ext_ram.bss")));
+#define CUSTOM_SSD16XX_FAST_INIT(inst) \
+	.fast = { \
+		.cnt = { custom_ssd16xx_fcnt_##inst[0], custom_ssd16xx_fcnt_##inst[1], \
+			 custom_ssd16xx_fcnt_##inst[2], custom_ssd16xx_fcnt_##inst[3] }, \
+		.red = custom_ssd16xx_fred_##inst, \
+		.cfg = CUSTOM_SSD16XX_FAST_CFG_DEFAULT, \
+		.enabled = true, \
+		.act = { .y0 = CUSTOM_SSD16XX_ROWS, .y1 = 0 }, \
+		.fb_dirty = { .y0 = CUSTOM_SSD16XX_ROWS, .y1 = 0 }, \
+	},
+#else
+#define CUSTOM_SSD16XX_FAST_BUFS(inst)
+#define CUSTOM_SSD16XX_FAST_INIT(inst)
+#endif
+
 #define CUSTOM_SSD16XX_DEFINE(inst) \
-	/* 48 KB each — placed in SPIRAM to keep DRAM free */ \
+	/* 48 KB each — placed in SPIRAM to keep DRAM free. Word-aligned: the \
+	 * fast engine walks the planes 32 pixels at a time. */ \
 	static uint8_t custom_ssd16xx_bw_##inst[CUSTOM_SSD16XX_BUF_BYTES] \
-		__attribute__((section(".ext_ram.bss"))); \
+		__aligned(4) __attribute__((section(".ext_ram.bss"))); \
 	static uint8_t custom_ssd16xx_red_##inst[CUSTOM_SSD16XX_BUF_BYTES] \
-		__attribute__((section(".ext_ram.bss"))); \
+		__aligned(4) __attribute__((section(".ext_ram.bss"))); \
 	static uint8_t custom_ssd16xx_prev_bw_##inst[CUSTOM_SSD16XX_BUF_BYTES] \
-		__attribute__((section(".ext_ram.bss"))); \
+		__aligned(4) __attribute__((section(".ext_ram.bss"))); \
+	CUSTOM_SSD16XX_FAST_BUFS(inst) \
 	static const struct custom_ssd16xx_config custom_ssd16xx_cfg_##inst = { \
 		.mipi_dev = DEVICE_DT_GET(DT_PARENT(DT_DRV_INST(inst))), \
 		.dbi_config = { \
@@ -1461,6 +2337,8 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 		.partial_count = 0, \
 		.full_refresh_interval = CUSTOM_SSD16XX_FULL_REFRESH_INTERVAL, \
 		.mono_thr = 128, \
+		.ram_window_full = true, \
+		CUSTOM_SSD16XX_FAST_INIT(inst) \
 	}; \
 	DEVICE_DT_INST_DEFINE(inst, custom_ssd16xx_init, NULL, \
 		&custom_ssd16xx_data_##inst, &custom_ssd16xx_cfg_##inst, \
