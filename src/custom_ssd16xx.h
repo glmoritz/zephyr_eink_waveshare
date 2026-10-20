@@ -169,7 +169,7 @@ bool custom_ssd16xx_fast_pending(const struct device *dev);
 /* Finish any owed HOLD scan, then drop the analog rails (0x22=0x03). */
 int custom_ssd16xx_fast_power_off(const struct device *dev);
 
-/* Route custom_ssd16xx_refresh_partial() through the engine (on at boot):
+/* Route custom_ssd16xx_refresh_partial() through the engine (off at boot):
  * submit, run cfg.sync_scans scans, return. While custom_ssd16xx_fast_pending(), the
  * owner of the panel must keep calling custom_ssd16xx_fast_step(). */
 int custom_ssd16xx_fast_enable(const struct device *dev, bool enable);

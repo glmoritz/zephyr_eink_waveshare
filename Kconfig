@@ -70,7 +70,7 @@ config LLSS_EPD_TEST_SHELL
 
 config LLSS_EPD_FAST_DRIVE
 	bool "Per-pixel pulse engine (inkboy-style fast drive)"
-	default y
+	default n
 	help
 	  Low-latency update path ported from kuslota/inkboy: repeated
 	  one-frame scans of a custom LUT with the analog rails kept up, the
@@ -78,9 +78,9 @@ config LLSS_EPD_FAST_DRIVE
 	  pixel, and a per-pixel pulse budget so a changed pixel is visibly
 	  moving after the first scan and saturates over the following ones.
 	  Costs 240 KB of SPIRAM (4 bit-sliced budget planes + RED scan
-	  image). On at boot: every partial refresh goes through it (first
-	  scan synchronous, the rest spent by the display thread). Fulls are
-	  unchanged. `epd fmode off` falls back to the OTP partial at runtime.
+	  image). Disabled: in daily use it left gray stains on the clock's
+	  7-segment digits (see docs/epd/WAVEFORMS.md section 6). When built
+	  in, it stays off at boot until `epd fmode on`.
 
 config LLSS_TOP_STRIP_HEIGHT
 	int "Top button-label strip height (px) reported to server"

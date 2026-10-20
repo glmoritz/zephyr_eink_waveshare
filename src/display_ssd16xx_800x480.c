@@ -2298,7 +2298,6 @@ static DEVICE_API(display, custom_ssd16xx_api) = {
 			 custom_ssd16xx_fcnt_##inst[2], custom_ssd16xx_fcnt_##inst[3] }, \
 		.red = custom_ssd16xx_fred_##inst, \
 		.cfg = CUSTOM_SSD16XX_FAST_CFG_DEFAULT, \
-		.enabled = true, \
 		.act = { .y0 = CUSTOM_SSD16XX_ROWS, .y1 = 0 }, \
 		.fb_dirty = { .y0 = CUSTOM_SSD16XX_ROWS, .y1 = 0 }, \
 	},
